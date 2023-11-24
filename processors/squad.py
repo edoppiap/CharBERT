@@ -175,8 +175,8 @@ def squad_convert_examples_to_features(
         else:
             truncated_query = tokenizer.encode(
                 example.question_text, add_special_tokens=False, max_length=max_query_length)
-        sequence_added_tokens = tokenizer.max_len - tokenizer.max_len_single_sentence
-        sequence_pair_added_tokens = tokenizer.max_len - tokenizer.max_len_sentences_pair
+        sequence_added_tokens = tokenizer.model_max_length - tokenizer.max_len_single_sentence
+        sequence_pair_added_tokens = tokenizer.model_max_length - tokenizer.max_len_sentences_pair
 
         span_doc_tokens = all_doc_tokens
         while len(spans) * doc_stride < len(all_doc_tokens):
