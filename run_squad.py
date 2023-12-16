@@ -29,6 +29,7 @@ import numpy as np
 import torch
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler, TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
+from transformers import AutoModel
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -537,6 +538,9 @@ def main():
                                         from_tf=bool('.ckpt' in args.model_name_or_path),
                                         config=config,
                                         cache_dir=args.cache_dir if args.cache_dir else None)
+    
+    # Load model directly
+    #model = AutoModel.from_pretrained("imvladikon/charbert-bert-wiki")
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
