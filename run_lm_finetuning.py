@@ -31,6 +31,8 @@ import re
 import shutil
 import copy
 
+from datasets import load_dataset
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, RandomSampler, TensorDataset
@@ -68,6 +70,11 @@ logger = logging.getLogger(__name__)
 MODEL_CLASSES = {
     'bert': (BertConfig, CharBertForMaskedLM, BertTokenizer),
     'roberta': (RobertaConfig, RobertaForMaskedLM, RobertaTokenizer),
+}
+
+WIKIPEDIA_DATASETS = {
+    'wikipedia_en': ('wikipedia', "20220301.en", 'train[:15%]'),
+    'wikipedia_it': ("wikipedia", "20220301.it", 'train[:80%]')
 }
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",["index", "label"])
@@ -259,6 +266,7 @@ class TextDataset(Dataset):
         return output_tokens, masked_lm_labels
 
     def create_adv_word(self, orig_token, rng):
+        # HERE IS WHERE THE MAGIC HAPPENS
         
         token = list(copy.deepcopy(orig_token))
         if len(orig_token) < 4:
@@ -370,9 +378,141 @@ class TextDataset(Dataset):
 
         return self.examples[self.current_sample_idx]
 
+class HuggingFaceDataset(TextDataset):
+    def __init__(self, tokenizer, args, dataset_name='wikipedia.en', block_size=512):
+        self.char2ids_dict = self.load_line_to_ids_dict(fname=args.char_vocab)
+        self.term2ids_dict = self.load_line_to_ids_dict(fname=args.term_vocab)
+        path, name, split = WIKIPEDIA_DATASETS[dataset_name]
+        self.dataset = load_dataset(path=path, name=name, split=split)
+        
+        file_raws = 0
+        for doc in self.dataset['text']:
+            for _ in doc.splitlines():
+                file_raws+=1
+        self.file_raws = file_raws
+        self.nraws = args.input_nraws
+        self.shuffle = True
+        self.current_sample_idx = -1
+        self.examples = []
+        self.tokenizer = tokenizer
+        self.block_size = block_size
+        self.num_nraws = 0
+        self.args = args
+        self.rng = random.Random(args.seed)
+        
+        # NEW VARIABLES
+        self.doc_idx = 0
+        self.line_idx = 0
+        
+    def read_nraws(self):
+        self.num_nraws += 1
+        logger.info(f'Reading the {self.num_nraws}th data block from dataset from huggingface (nraws: {self.nraws})')
+        
+        text = ""
+        read_lines = 0
+        
+        for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx:]):
+            for line_idx, line in enumerate(doc.splitlines()):
+                text += line.strip()
+                
+                read_lines += 1
+                if read_lines == self.nraws:
+                    break
+            if read_lines == self.nraws:
+                self.doc_idx = doc_idx
+                self.line_idx = line_idx
+                break
+        
+        """while read_lines < self.nraws:
+            logger.info(f'doc_idx: {self.doc_idx}')
+            if self.doc_idx > len(self.dataset):
+                self.doc_idx = 0
+            doc = self.dataset['text'][self.doc_idx]
+            lines = iter(doc.splitlines())
+            
+            for i,line in enumerate(lines):
+                #logger.info(f'Read_lines: {read_lines} nraws: {self.nraws}')
+                if read_lines >= self.nraws:
+                    self.line_idx = i
+                    break
+                text += line.strip()
+                read_lines += 1
+            
+            if read_lines < self.nraws:
+                doc_idx += 1"""
+        
+        doc_tokens = tk.word_tokenize(text)
+        if self.args.output_debug:
+            print(f'doc_tokens: {" ".join(doc_tokens)}')
+        
+        tokenized_tokens = []
+        sub_index_to_orig_token = {}
+        sub_index_to_change = {}
+        adv_labels = []
+        num_diff = num_same = 0
+        for idx, token in enumerate(doc_tokens):
+            ori_token = copy.deepcopy(token)
+            if self.rng.random() < self.args.adv_probability:
+                token = self.create_adv_word(token, self.rng)
+            if ori_token != token and self.args.output_debug:
+                if num_diff % 1000 == 0:
+                    print(f"Change the token {ori_token} To {token}")
+                num_diff += 1
+            else:
+                num_same += 1
+            sub_tokens = []
+            if self.args.model_type == 'roberta':
+                sub_tokens = self.tokenizer.tokenize(token, add_prefix_space=True)
+            else:
+                sub_tokens = self.tokenizer.tokenize(token)
+            for sub_w in sub_tokens:
+                sub_index_to_orig_token[len(tokenized_tokens)] = token
+                if ori_token != token:
+                    sub_index_to_change[len(tokenized_tokens)] = True
+                    #if ori_token in self.term2ids_dict:
+                    #    adv_labels.append(self.term2ids_dict[ori_token])
+                    if ori_token.lower() in self.term2ids_dict:
+                        adv_labels.append(self.term2ids_dict[ori_token.lower()])
+                    else:
+                        adv_labels.append(self.term2ids_dict['<unk>'])
+                else:
+                    sub_index_to_change[len(tokenized_tokens)] = False
+                    adv_labels.append(-1)
+                    
+                tokenized_tokens.append(sub_w)
+        if self.args.output_debug:
+            print(f"num_same: {num_same} num_diff: {num_diff}")
+            print(f"tokenized doc: {' '.join(tokenized_tokens)}")
+
+        input_tokens, mask_labels = self.create_masked_lm_predictions(tokenized_tokens,\
+                self.args.mlm_probability, self.tokenizer, self.rng, sub_index_to_change)
+        tokenized_text = self.tokenizer.convert_tokens_to_ids(input_tokens)
+
+        if self.args.output_debug:
+            print(f"mask tokens: {' '.join(input_tokens)}")
+
+        seq_maxlen = self.block_size - 2
+        self.examples = []
+        for i in range(0, len(tokenized_text)-seq_maxlen+1, seq_maxlen): # Truncate in block of block_size
+            input_ids = self.tokenizer.build_inputs_with_special_tokens(tokenized_text[i:i+seq_maxlen])
+            labels = [-1] + mask_labels[i:i+seq_maxlen] + [-1] #For CLS and SEP
+            adv_input_labels = [-1] + adv_labels[i:i+seq_maxlen] + [-1]
+            char_input_ids, start_ids, end_ids = self.build_char_inputs(input_ids, sub_index_to_orig_token, i, self.rng, labels)
+            assert len(input_ids) == len(labels)
+            assert len(input_ids) == len(adv_input_labels)
+            assert len(input_ids) == len(start_ids)
+            assert len(input_ids) == len(end_ids)
+            self.examples.append((torch.tensor(char_input_ids), torch.tensor(start_ids), torch.tensor(end_ids),\
+                torch.tensor(input_ids), torch.tensor(labels), torch.tensor(adv_input_labels)))
+        self.current_sample_idx = -1
+        if self.shuffle:
+            random.shuffle(self.examples)
 
 def load_and_cache_examples(args, tokenizer, evaluate=False):
-    dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
+    if os.path.isfile(args.train_data_file):
+        dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
+    else:
+        dataset = HuggingFaceDataset(tokenizer, args, args.train_data_file, block_size=args.block_size)
     return dataset
 
 
