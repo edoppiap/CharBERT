@@ -73,8 +73,8 @@ MODEL_CLASSES = {
 }
 
 WIKIPEDIA_DATASETS = {
-    'wikipedia_en': ('wikipedia', "20220301.en", 'train[:15%]'),
-    'wikipedia_it': ("wikipedia", "20220301.it", 'train[:80%]')
+    'wikipedia_en': ('wikipedia', "20220301.en", 'train[:10%]'),
+    'wikipedia_it': ("wikipedia", "20220301.it", 'train[:50%]')
 }
 
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",["index", "label"])
@@ -379,16 +379,16 @@ class TextDataset(Dataset):
         return self.examples[self.current_sample_idx]
 
 class HuggingFaceDataset(TextDataset):
-    def __init__(self, tokenizer, args, dataset_name='wikipedia.en', block_size=512):
+    def __init__(self, tokenizer, args, dataset, block_size=512):
         self.char2ids_dict = self.load_line_to_ids_dict(fname=args.char_vocab)
         self.term2ids_dict = self.load_line_to_ids_dict(fname=args.term_vocab)
-        path, name, split = WIKIPEDIA_DATASETS[dataset_name]
-        self.dataset = load_dataset(path=path, name=name, split=split)
+        #path, name, split = WIKIPEDIA_DATASETS[dataset_name]
+        #self.dataset = load_dataset(path=path, name=name, split=split)
+        self.dataset = dataset
         
         file_raws = 0
-        for doc in self.dataset['text']:
-            for _ in doc.splitlines():
-                file_raws+=1
+        for doc in tqdm(self.dataset['text'], desc='Counting the dataset raws'):
+            file_raws += len(doc.splitlines())
         self.file_raws = file_raws
         self.nraws = args.input_nraws
         self.shuffle = True
@@ -411,35 +411,21 @@ class HuggingFaceDataset(TextDataset):
         text = ""
         read_lines = 0
         
-        for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx:]):
-            for line_idx, line in enumerate(doc.splitlines()):
-                text += line.strip()
-                
-                read_lines += 1
+        while read_lines < self.nraws:
+            for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx]):
+                #logger.info(f'doc_idx: {doc_idx} self: {self.doc_idx}')
+                for line_idx, line in enumerate(doc.splitlines()):
+                    text += line.strip()
+                    
+                    read_lines += 1
+                    if read_lines == self.nraws:
+                        break
                 if read_lines == self.nraws:
+                    self.doc_idx += doc_idx
+                    self.line_idx = line_idx
                     break
-            if read_lines == self.nraws:
-                self.doc_idx = doc_idx
-                self.line_idx = line_idx
-                break
-        
-        """while read_lines < self.nraws:
-            logger.info(f'doc_idx: {self.doc_idx}')
-            if self.doc_idx > len(self.dataset):
+            if read_lines < self.nraws: # restart to load the dataset from the beginning
                 self.doc_idx = 0
-            doc = self.dataset['text'][self.doc_idx]
-            lines = iter(doc.splitlines())
-            
-            for i,line in enumerate(lines):
-                #logger.info(f'Read_lines: {read_lines} nraws: {self.nraws}')
-                if read_lines >= self.nraws:
-                    self.line_idx = i
-                    break
-                text += line.strip()
-                read_lines += 1
-            
-            if read_lines < self.nraws:
-                doc_idx += 1"""
         
         doc_tokens = tk.word_tokenize(text)
         if self.args.output_debug:
@@ -512,7 +498,9 @@ def load_and_cache_examples(args, tokenizer, evaluate=False):
     if os.path.isfile(args.train_data_file):
         dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
     else:
-        dataset = HuggingFaceDataset(tokenizer, args, args.train_data_file, block_size=args.block_size)
+        path, name, split = WIKIPEDIA_DATASETS[args.train_data_file]
+        load = load_dataset(path=path, name=name, split=split, trust_remote_code=True)
+        dataset = HuggingFaceDataset(tokenizer, args, load, block_size=args.block_size)
     return dataset
 
 
@@ -560,7 +548,7 @@ def train(args, train_dataset, model, tokenizer):
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=1)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=0)
 
     if args.max_steps > 0:
         t_total = args.max_steps
@@ -1073,4 +1061,5 @@ def main():
 
 
 if __name__ == "__main__":
+    tk.download('punkt')
     main()
