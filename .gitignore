@@ -3,3 +3,4 @@ __pycache__
 *.txt
 *.bin
 cached_dev__384
+*.code-workspace
