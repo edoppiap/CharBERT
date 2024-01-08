@@ -5,3 +5,7 @@ __pycache__
 cached_dev__384
 *.code-workspace
 events.out.tfevents*
+data/__MACOSX
+data/charbert-bert-wiki
+data/charbert-roberta-wiki
+data/attack_datasets/CharAttack_Squad_Q

@@ -219,7 +219,7 @@ def squad_convert_examples_to_features(
             logger.info(f'span_doc_tokens[:30]: {span_doc_tokens[:30]}')"""
 
             #tokenizer.padding_side = right
-            """encoded_dict = tokenizer.encode_plus(
+            encoded_dict = tokenizer.encode_plus(
                 truncated_query if tokenizer.padding_side == "right" else span_doc_tokens, 
                 span_doc_tokens if tokenizer.padding_side == "right" else truncated_query,
                 max_length=max_seq_length,
@@ -228,7 +228,7 @@ def squad_convert_examples_to_features(
                 stride=max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens,
                 truncation="only_second" if tokenizer.padding_side == "right" else "only_first",
                 add_prefix_space=True if model_type == 'roberta' else False
-            )"""
+            )
             #l'errore è che span_doc_tokens è una lista vuota al secondo giro
             #
             # text: è una lista di tokens ids (è una lista di interi) della query
@@ -274,7 +274,7 @@ def squad_convert_examples_to_features(
 
             spans.append(encoded_dict)
 
-            if "overflowing_tokens" not in encoded_dict or len(encoded_dict["overflowing_tokens"]) == 0:
+            if "overflowing_tokens" not in encoded_dict or encoded_dict['overflowing_tokens'] == []:
                 break
             span_doc_tokens = encoded_dict["overflowing_tokens"]
 
