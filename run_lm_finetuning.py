@@ -192,7 +192,7 @@ class TextDataset(Dataset):
 
     def create_masked_lm_predictions(self, tokens, masked_lm_prob, tokenizer, rng, sub_index_to_change):
         """Creates the predictions for the masked LM objective."""
-       
+        
         vocab_words = list(tokenizer.vocab.keys())
         cand_indexes = []
         for (i, token) in enumerate(tokens):
@@ -370,11 +370,17 @@ class TextDataset(Dataset):
         return self.file_raws
 
     def __getitem__(self, item):
+        #print(f'type(self): {type(self)}')
+        #print(f'current_sample_idx: {self.current_sample_idx}')
         self.current_sample_idx += 1
+        #print(f'current_sample_idx: {self.current_sample_idx}')
 
         if len(self.examples) == 0 or self.current_sample_idx == len(self.examples):
             self.read_nraws()
+            print(f'len self.examples: {len(self.examples)}')
+            print(f'self.examples: {self.examples}')
             self.current_sample_idx += 1
+            print(f'current_sample_idx: {self.current_sample_idx}')
 
         return self.examples[self.current_sample_idx]
 
@@ -414,7 +420,9 @@ class HuggingFaceDataset(TextDataset):
         while read_lines < self.nraws:
             for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx]):
                 #logger.info(f'doc_idx: {doc_idx} self: {self.doc_idx}')
+                print(f'Doc: {doc}') #questo doc in realtà è una lettera
                 for line_idx, line in enumerate(doc.splitlines()):
+                    print(f'line: {line}')
                     text += line.strip()
                     
                     read_lines += 1
