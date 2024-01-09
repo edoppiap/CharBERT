@@ -97,7 +97,7 @@ class TextDataset(Dataset):
             for _ in f:
                 file_raws += 1
         self.file_raws = file_raws
-        self.nraws = args.input_nraws
+        self.nraws = args.input_nraws #numero di righe da leggere ad ogni batch
         self.shuffle = True
         self.file_path = file_path
         self.finput = open(file_path, encoding="utf-8")
@@ -115,8 +115,8 @@ class TextDataset(Dataset):
 
         text = ""
         for _ in range(self.nraws):
-            line =  self.finput.readline()
-            if line:
+            line =  self.finput.readline() #legge una riga del file 
+            if line: #se non è vuota la aggiunge al testo
                 text += line.strip()
             else:
                 self.finput.seek(0)
@@ -396,7 +396,7 @@ class HuggingFaceDataset(TextDataset):
         for doc in tqdm(self.dataset['text'], desc='Counting the dataset raws'):
             file_raws += len(doc.splitlines())
         self.file_raws = file_raws
-        self.nraws = args.input_nraws
+        self.nraws = args.input_nraws #numero di righe da leggere ogni volta
         self.shuffle = True
         self.current_sample_idx = -1
         self.examples = []
@@ -409,6 +409,8 @@ class HuggingFaceDataset(TextDataset):
         # NEW VARIABLES
         self.doc_idx = 0
         self.line_idx = 0
+        self.start_line_idx = 0
+        self.num_tot_docs = len(self.dataset['text'])
         
     def read_nraws(self):
         self.num_nraws += 1
@@ -417,23 +419,27 @@ class HuggingFaceDataset(TextDataset):
         text = ""
         read_lines = 0
         
+        ################
         while read_lines < self.nraws:
-            for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx]):
-                #logger.info(f'doc_idx: {doc_idx} self: {self.doc_idx}')
-                print(f'Doc: {doc}') #questo doc in realtà è una lettera
-                for line_idx, line in enumerate(doc.splitlines()):
-                    print(f'line: {line}')
+            doc = self.dataset['text'][self.doc_idx]
+            #doc_len = len(doc.splitlines())
+            for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]): #TODO: aggiungere controllo che scarta le righe vuote
+                abs_line_idx = self.start_line_idx + rel_line_idx
+                if line != '': #se la linea non è vuota
+                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line}')
                     text += line.strip()
-                    
                     read_lines += 1
-                    if read_lines == self.nraws:
-                        break
-                if read_lines == self.nraws:
-                    self.doc_idx += doc_idx
-                    self.line_idx = line_idx
+                    
+                if read_lines == self.nraws: #se ho letto le righe che mi servono prima di finire il doc
+                    self.start_line_idx = abs_line_idx + 1 #riparto dalla riga successiva
                     break
-            if read_lines < self.nraws: # restart to load the dataset from the beginning
-                self.doc_idx = 0
+                
+            if read_lines < self.nraws: #se ho finito il doc ma non ho ancora letto tutte le righe che mi servono
+                self.doc_idx += 1 #vado al doc successivo
+                self.start_line_idx = 0 #parto dalla riga 0
+                if self.doc_idx == self.num_tot_docs: #se ho letto tutti i doc ma mi servono ancora righe
+                    self.doc_idx = 0 #riparto da capo
+        ################
         
         doc_tokens = tk.word_tokenize(text)
         if self.args.output_debug:
@@ -446,7 +452,7 @@ class HuggingFaceDataset(TextDataset):
         num_diff = num_same = 0
         for idx, token in enumerate(doc_tokens):
             ori_token = copy.deepcopy(token)
-            if self.rng.random() < self.args.adv_probability:
+            if self.rng.random() < self.args.adv_probability: #con una certa probabilità faccio adv token
                 token = self.create_adv_word(token, self.rng)
             if ori_token != token and self.args.output_debug:
                 if num_diff % 1000 == 0:
