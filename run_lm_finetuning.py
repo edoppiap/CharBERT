@@ -42,6 +42,7 @@ import nltk as tk
 import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf-8')
+from time import time
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -376,11 +377,14 @@ class TextDataset(Dataset):
         #print(f'current_sample_idx: {self.current_sample_idx}')
 
         if len(self.examples) == 0 or self.current_sample_idx == len(self.examples):
+            t_0_read_nraws = time()
             self.read_nraws()
-            print(f'len self.examples: {len(self.examples)}')
-            print(f'self.examples: {self.examples}')
+            t_1_read_nraws = time()
+            print(f'\n\nOne read_nraws takes {t_1_read_nraws - t_0_read_nraws} seconds')
+            #print(f'len self.examples: {len(self.examples)}')
+            #print(f'self.examples: {self.examples}')
             self.current_sample_idx += 1
-            print(f'current_sample_idx: {self.current_sample_idx}')
+            #print(f'current_sample_idx: {self.current_sample_idx}')
 
         return self.examples[self.current_sample_idx]
 
@@ -390,10 +394,10 @@ class HuggingFaceDataset(TextDataset):
         self.term2ids_dict = self.load_line_to_ids_dict(fname=args.term_vocab)
         #path, name, split = WIKIPEDIA_DATASETS[dataset_name]
         #self.dataset = load_dataset(path=path, name=name, split=split)
-        self.dataset = dataset
+        self.dataset_text = dataset['text']
         
         file_raws = 0
-        for doc in tqdm(self.dataset['text'], desc='Counting the dataset raws'):
+        for doc in tqdm(self.dataset_text, desc='Counting the dataset raws'):
             file_raws += len(doc.splitlines())
         self.file_raws = file_raws
         self.nraws = args.input_nraws #numero di righe da leggere ogni volta
@@ -410,7 +414,7 @@ class HuggingFaceDataset(TextDataset):
         self.doc_idx = 0
         self.line_idx = 0
         self.start_line_idx = 0
-        self.num_tot_docs = len(self.dataset['text'])
+        self.num_tot_docs = len(self.dataset_text)
         
     def read_nraws(self):
         self.num_nraws += 1
@@ -421,12 +425,12 @@ class HuggingFaceDataset(TextDataset):
         
         ################
         while read_lines < self.nraws:
-            doc = self.dataset['text'][self.doc_idx]
+            doc = self.dataset_text[self.doc_idx]
             #doc_len = len(doc.splitlines())
             for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]):
                 abs_line_idx = self.start_line_idx + rel_line_idx
                 if line.strip() != '': #se la linea non è vuota
-                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
+                    #print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
                     text += line.strip()
                     read_lines += 1
                     
@@ -560,7 +564,7 @@ def train(args, train_dataset, model, tokenizer):
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
 
-    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
+    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu) #default = 4
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=0)
 
@@ -638,7 +642,7 @@ def train(args, train_dataset, model, tokenizer):
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
-            
+            t_0_dataloader = time()
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
@@ -712,6 +716,8 @@ def train(args, train_dataset, model, tokenizer):
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+            t_1_dataloader = time()
+            print(f'\n\nOne dataloader loop takes {t_1_dataloader - t_0_dataloader} seconds')
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
