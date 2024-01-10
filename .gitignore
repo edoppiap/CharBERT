@@ -1,6 +1,10 @@
-/**/__pycache__
-/runs
-
+__pycache__
+*.json
+*.txt
+*.bin
+cached_dev__384
+*.code-workspace
+events.out.tfevents*
 data/__MACOSX
 data/charbert-bert-wiki
 data/charbert-roberta-wiki

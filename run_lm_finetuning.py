@@ -42,6 +42,7 @@ import nltk as tk
 import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf-8')
+from time import time
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -97,7 +98,7 @@ class TextDataset(Dataset):
             for _ in f:
                 file_raws += 1
         self.file_raws = file_raws
-        self.nraws = args.input_nraws
+        self.nraws = args.input_nraws #numero di righe da leggere ad ogni batch
         self.shuffle = True
         self.file_path = file_path
         self.finput = open(file_path, encoding="utf-8")
@@ -115,8 +116,8 @@ class TextDataset(Dataset):
 
         text = ""
         for _ in range(self.nraws):
-            line =  self.finput.readline()
-            if line:
+            line =  self.finput.readline() #legge una riga del file 
+            if line: #se non è vuota la aggiunge al testo
                 text += line.strip()
             else:
                 self.finput.seek(0)
@@ -192,7 +193,7 @@ class TextDataset(Dataset):
 
     def create_masked_lm_predictions(self, tokens, masked_lm_prob, tokenizer, rng, sub_index_to_change):
         """Creates the predictions for the masked LM objective."""
-       
+        
         vocab_words = list(tokenizer.vocab.keys())
         cand_indexes = []
         for (i, token) in enumerate(tokens):
@@ -370,11 +371,20 @@ class TextDataset(Dataset):
         return self.file_raws
 
     def __getitem__(self, item):
+        #print(f'type(self): {type(self)}')
+        #print(f'current_sample_idx: {self.current_sample_idx}')
         self.current_sample_idx += 1
+        #print(f'current_sample_idx: {self.current_sample_idx}')
 
         if len(self.examples) == 0 or self.current_sample_idx == len(self.examples):
+            t_0_read_nraws = time()
             self.read_nraws()
+            t_1_read_nraws = time()
+            print(f'\n\nOne read_nraws takes {t_1_read_nraws - t_0_read_nraws} seconds')
+            #print(f'len self.examples: {len(self.examples)}')
+            #print(f'self.examples: {self.examples}')
             self.current_sample_idx += 1
+            #print(f'current_sample_idx: {self.current_sample_idx}')
 
         return self.examples[self.current_sample_idx]
 
@@ -384,13 +394,13 @@ class HuggingFaceDataset(TextDataset):
         self.term2ids_dict = self.load_line_to_ids_dict(fname=args.term_vocab)
         #path, name, split = WIKIPEDIA_DATASETS[dataset_name]
         #self.dataset = load_dataset(path=path, name=name, split=split)
-        self.dataset = dataset
+        self.dataset_text = dataset['text']
         
         file_raws = 0
-        for doc in tqdm(self.dataset['text'], desc='Counting the dataset raws'):
+        for doc in tqdm(self.dataset_text, desc='Counting the dataset raws'):
             file_raws += len(doc.splitlines())
         self.file_raws = file_raws
-        self.nraws = args.input_nraws
+        self.nraws = args.input_nraws #numero di righe da leggere ogni volta
         self.shuffle = True
         self.current_sample_idx = -1
         self.examples = []
@@ -403,6 +413,8 @@ class HuggingFaceDataset(TextDataset):
         # NEW VARIABLES
         self.doc_idx = 0
         self.line_idx = 0
+        self.start_line_idx = 0
+        self.num_tot_docs = len(self.dataset_text)
         
     def read_nraws(self):
         self.num_nraws += 1
@@ -411,21 +423,27 @@ class HuggingFaceDataset(TextDataset):
         text = ""
         read_lines = 0
         
+        ################
         while read_lines < self.nraws:
-            for doc_idx, doc in enumerate(self.dataset['text'][self.doc_idx]):
-                #logger.info(f'doc_idx: {doc_idx} self: {self.doc_idx}')
-                for line_idx, line in enumerate(doc.splitlines()):
+            doc = self.dataset_text[self.doc_idx]
+            #doc_len = len(doc.splitlines())
+            for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]):
+                abs_line_idx = self.start_line_idx + rel_line_idx
+                if line.strip() != '': #se la linea non è vuota
+                    #print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
                     text += line.strip()
-                    
                     read_lines += 1
-                    if read_lines == self.nraws:
-                        break
-                if read_lines == self.nraws:
-                    self.doc_idx += doc_idx
-                    self.line_idx = line_idx
+                    
+                if read_lines == self.nraws: #se ho letto le righe che mi servono prima di finire il doc
+                    self.start_line_idx = abs_line_idx + 1 #riparto dalla riga successiva
                     break
-            if read_lines < self.nraws: # restart to load the dataset from the beginning
-                self.doc_idx = 0
+                
+            if read_lines < self.nraws: #se ho finito il doc ma non ho ancora letto tutte le righe che mi servono
+                self.doc_idx += 1 #vado al doc successivo
+                self.start_line_idx = 0 #parto dalla riga 0
+                if self.doc_idx == self.num_tot_docs: #se ho letto tutti i doc ma mi servono ancora righe
+                    self.doc_idx = 0 #riparto da capo
+        ################
         
         doc_tokens = tk.word_tokenize(text)
         if self.args.output_debug:
@@ -438,7 +456,7 @@ class HuggingFaceDataset(TextDataset):
         num_diff = num_same = 0
         for idx, token in enumerate(doc_tokens):
             ori_token = copy.deepcopy(token)
-            if self.rng.random() < self.args.adv_probability:
+            if self.rng.random() < self.args.adv_probability: #con una certa probabilità faccio adv token
                 token = self.create_adv_word(token, self.rng)
             if ori_token != token and self.args.output_debug:
                 if num_diff % 1000 == 0:
@@ -546,7 +564,7 @@ def train(args, train_dataset, model, tokenizer):
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
 
-    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
+    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu) #default = 4
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=0)
 
@@ -624,7 +642,7 @@ def train(args, train_dataset, model, tokenizer):
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
-            
+            t_0_dataloader = time()
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
@@ -698,6 +716,8 @@ def train(args, train_dataset, model, tokenizer):
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+            t_1_dataloader = time()
+            print(f'\n\nOne dataloader loop takes {t_1_dataloader - t_0_dataloader} seconds')
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
