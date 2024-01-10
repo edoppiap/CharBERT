@@ -423,10 +423,10 @@ class HuggingFaceDataset(TextDataset):
         while read_lines < self.nraws:
             doc = self.dataset['text'][self.doc_idx]
             #doc_len = len(doc.splitlines())
-            for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]): #TODO: aggiungere controllo che scarta le righe vuote
+            for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]):
                 abs_line_idx = self.start_line_idx + rel_line_idx
-                if line != '': #se la linea non è vuota
-                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line}')
+                if line.strip() != '': #se la linea non è vuota
+                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
                     text += line.strip()
                     read_lines += 1
                     
