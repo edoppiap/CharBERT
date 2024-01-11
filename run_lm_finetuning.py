@@ -430,7 +430,7 @@ class HuggingFaceDataset(TextDataset):
             for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]):
                 abs_line_idx = self.start_line_idx + rel_line_idx
                 if line.strip() != '': #se la linea non è vuota
-                    #print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
+                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
                     text += line.strip()
                     read_lines += 1
                     

@@ -301,6 +301,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     else:
         logger.info("Creating features from dataset file at %s", args.data_dir)
         label_list = glue_processor.get_labels()
+        print(f'{label_list = }')
         if task in ['mnli', 'mnli-mm'] and args.model_type in ['roberta', 'xlmroberta']:
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]

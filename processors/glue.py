@@ -174,7 +174,10 @@ def glue_convert_examples_to_features(examples, tokenizer,
             print(f'end_ids  : {" ".join(map(str, end_ids))}')
 
         if output_mode == "classification":
-            label = label_map[example.label]
+            if task is None: # per correggere il fatto che le label nel tsv sono 0 e 1 ma lui si aspetta entailment e not_entailment
+                label = int(example.label)
+            else:
+                label = label_map[example.label]
         elif output_mode == "regression":
             label = float(example.label)
         else:
