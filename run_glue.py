@@ -45,7 +45,8 @@ from modeling.configuration_roberta import RobertaConfig
 from transformers import glue_compute_metrics as compute_metrics
 from transformers import glue_output_modes as output_modes
 from processors.glue import glue_convert_examples_to_features as convert_examples_to_features
-from transformers import glue_processors
+#from transformers import glue_processors
+from processors.glue import glue_processors
 #from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from modeling.modeling_charbert import CharBertForSequenceClassification
 from modeling.modeling_roberta import RobertaForSequenceClassification
