@@ -9,3 +9,5 @@ data/__MACOSX
 data/charbert-bert-wiki
 data/charbert-roberta-wiki
 data/attack_datasets/CharAttack_Squad_Q
+
+/.venv

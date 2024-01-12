@@ -591,10 +591,11 @@ def train(args, train_dataset, model, tokenizer):
 
     if args.fp16:
         try:
-            from apex import amp
+            from torch.cuda import amp
         except ImportError:
             raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
-        model, optimizer = amp.initialize(model, optimizer, opt_level=args.fp16_opt_level)
+        #model, optimizer = amp.initialize(model, optimizer, opt_level=args.fp16_opt_level)
+        scaler = amp.GradScaler()
 
     # multi-gpu training (should be after apex fp16 initialization)
     if args.n_gpu > 1:
@@ -656,11 +657,11 @@ def train(args, train_dataset, model, tokenizer):
             labels = labels.to(args.device)
             adv_labels = adv_labels.to(args.device)
             model.train()
-            outputs = model(char_input_ids, start_ids, end_ids, inputs, masked_lm_labels=labels, adv_labels=adv_labels)
+            outputs = model(char_input_ids, start_ids, end_ids, inputs, masked_lm_labels=labels, adv_labels=adv_labels) # <-- outputs
             if args.output_debug:
                 print(f'mask_lm loss: {outputs[0]}')
                 print(f'adv_term loss: {outputs[1]}')
-            loss = outputs[0] + outputs[1] # model outputs are always tuple in transformers (see doc)
+            loss = outputs[0] + outputs[1] # model outputs are always tuple in transformers (see doc) <-- loss
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -668,18 +669,18 @@ def train(args, train_dataset, model, tokenizer):
                 loss = loss / args.gradient_accumulation_steps
 
             if args.fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                scaler.scale(loss).backward()
             else:
                 loss.backward()
 
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
-                    torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
+                    scaler.step(optimizer)
+                    scaler.update()
                 else:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                optimizer.step()
+                    optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
