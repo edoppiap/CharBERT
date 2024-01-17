@@ -256,9 +256,11 @@ class CharBertModel(BertPreTrainedModel):
             head_mask = head_mask.to(dtype=next(self.parameters()).dtype)  # switch to fload if need + fp16 compatibility
         else:
             head_mask = [None] * self.config.num_hidden_layers
-
+        
+        #bert embeddings
         embedding_output = self.embeddings(input_ids=input_ids, position_ids=position_ids,\
             token_type_ids=token_type_ids, inputs_embeds=inputs_embeds)
+        
         #print(f'input shape for bert_encoder: embedding_output {embedding_output.size()}')
         #print(f'extended_attention_mask: {extended_attention_mask.size()}') 
         #print(f'head_mask: {head_mask.size()} encoder_hidden_states: {encoder_hidden_states.size()}')
@@ -269,18 +271,20 @@ class CharBertModel(BertPreTrainedModel):
         #                               encoder_hidden_states=encoder_hidden_states,
         #                               encoder_attention_mask=encoder_extended_attention_mask)
 
+        #char embeddings
         char_embeddings = self.char_embeddings(char_input_ids, start_ids, end_ids)
         char_encoder_outputs = self.encoder(char_embeddings,
-                                       embedding_output,
-                                       attention_mask=extended_attention_mask,
-                                       head_mask=head_mask,
-                                       encoder_hidden_states=encoder_hidden_states,
-                                       encoder_attention_mask=encoder_extended_attention_mask)
+                                            embedding_output,
+                                            attention_mask=extended_attention_mask,
+                                            head_mask=head_mask,
+                                            encoder_hidden_states=encoder_hidden_states,
+                                            encoder_attention_mask=encoder_extended_attention_mask)
         
         sequence_output, char_sequence_output = char_encoder_outputs[0], char_encoder_outputs[1]
         pooled_output = self.pooler(sequence_output)
         char_pooled_output = self.pooler(char_sequence_output)
-
+        
+        #quel + sotto fa una concatenazione
         outputs = (sequence_output, pooled_output, char_sequence_output, char_pooled_output) + char_encoder_outputs[1:]  # add hidden_states and attentions if they are here
         return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
 
