@@ -132,12 +132,12 @@ class CharBertModel(BertPreTrainedModel):
         super(CharBertModel, self).__init__(config)
         self.config = config
 
-        self.embeddings = BertEmbeddings(config)
+        self.embeddings = BertEmbeddings(config) #outputs the bert token embeddings (input for CharBertEncoder)
         #self.encoder = BertEncoder(config)
 
-        self.char_embeddings = CharBertEmbeddings(config, is_roberta=is_roberta)
+        self.char_embeddings = CharBertEmbeddings(config, is_roberta=is_roberta) #outputs the char embeddings (input for CharBertEncoder)
         #self.char_encoder = CharBertEncoder(config)
-        self.encoder = CharBertEncoder(config, is_roberta=is_roberta)
+        self.encoder = CharBertEncoder(config, is_roberta=is_roberta) #outputs the final token and char embeddings
 
         self.pooler = BertPooler(config)
 
@@ -280,11 +280,11 @@ class CharBertModel(BertPreTrainedModel):
                                             encoder_hidden_states=encoder_hidden_states,
                                             encoder_attention_mask=encoder_extended_attention_mask)
         
-        sequence_output, char_sequence_output = char_encoder_outputs[0], char_encoder_outputs[1]
+        sequence_output, char_sequence_output = char_encoder_outputs[0], char_encoder_outputs[1] #Questi sono i token e char embeddings finali
         pooled_output = self.pooler(sequence_output)
         char_pooled_output = self.pooler(char_sequence_output)
         
-        #quel + sotto fa una concatenazione
+        #quel + sotto è come fosse una tupla.append()
         outputs = (sequence_output, pooled_output, char_sequence_output, char_pooled_output) + char_encoder_outputs[1:]  # add hidden_states and attentions if they are here
         return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
 

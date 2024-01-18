@@ -427,6 +427,7 @@ class CharBertEncoder(nn.Module):
         all_hidden_states = ()
         all_attentions = ()
         for i, layer_module in enumerate(self.layer):
+            #layer_module è un BertLayer (Transformer nell'immagine)
             fusion_layer = None
             if not self.is_roberta:
                 fusion_layer = self.fusion_layer_list[i]
@@ -435,20 +436,29 @@ class CharBertEncoder(nn.Module):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
+            #viene usato lo stesso bertLayer per le due sequenze (token e parole) però non venogono passate concatenate
             layer_outputs = layer_module(hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask)
             char_layer_outputs = layer_module(char_hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask)
 
             word_outputs   = layer_outputs[0]
             char_outputs   = char_layer_outputs[0]
+            #Le due rappresentazioni di token e caratteri passano in due linear layer indipendenti
             word_transform = self.word_linear1(word_outputs)
             char_transform = self.char_linear1(char_outputs)
-            #share_hidden  = self.act_layer(word_transform + char_transform + self.share_bias) 
+            #share_hidden  = self.act_layer(word_transform + char_transform + self.share_bias)
+            
+            #L'output dei due linear layer viene concatenato 
             share_cat      = torch.cat([word_transform, char_transform], dim=-1)
             share_permute  = share_cat.permute(0, 2, 1)
+            # e passato nel fusion_layer (una conv1d, CNN)
             share_fusion   = fusion_layer(share_permute)
             share_hidden   = share_fusion.permute(0, 2, 1)
+            
             #word_states    = self.act_layer(self.word_linear2(share_hidden))
             #char_states    = self.act_layer(self.char_linear2(share_hidden))
+            
+            #Qui sotto viene fatta la residual connection e la normalizzazione
+            #l'output è quello che nella figura è chiamato "New Token Repr." e "New Char Repr."
             hidden_states  = self.word_norm(share_hidden + word_outputs)
             char_hidden_states = self.char_norm(share_hidden + char_outputs)
 
@@ -469,6 +479,7 @@ class CharBertEncoder(nn.Module):
         if self.output_attentions:
             outputs = outputs + (all_attentions,)
         return outputs  # last-layer hidden state, (all hidden states), (all attentions)
+                        # hidden_states, char_hidden_states, all_hidden_states, all_attentions
 
 class BertPooler(nn.Module):
     def __init__(self, config):
@@ -690,7 +701,7 @@ class BertModel(BertPreTrainedModel):
         super(BertModel, self).__init__(config)
         self.config = config
 
-        self.embeddings = BertEmbeddings(config)
+        self.embeddings = BertEmbeddings(config) 
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
 

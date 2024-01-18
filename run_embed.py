@@ -105,11 +105,12 @@ def create_embeddings(args, model, tokenizer):
             outputs = model(**inputs) #model deve essere CharBertModel
             
             #sequence_output, pooled_output, hidden_states, attentions = outputs #da spostare sulla gpu
-            
+        
+        #TODO: bisogna usare questo per avere una rappresentazione della frase con un unico vettore
         """token_seq_repr = outputs[0]
         char_seq_repr = outputs[2]
         seq_repr = torch.cat([token_seq_repr, char_seq_repr], dim=-1)
-        seq_output = torch.mean(seq_repr, dim=1)""" #TODO: bisogna usare questo per avere una rappresentazione della frase con un unico vettore
+        seq_output = torch.mean(seq_repr, dim=1)"""
         
         results.append(outputs)
 
