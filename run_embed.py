@@ -65,17 +65,17 @@ def set_seed(args):
 def create_embeddings(args, model, tokenizer):
     results = []
     
-    eval_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+    embed_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
     
-    eval_output_dir = args.output_dir
+    """eval_output_dir = args.output_dir
     
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
-        os.makedirs(eval_output_dir)
+        os.makedirs(eval_output_dir)"""
 
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
     # Note that DistributedSampler samples randomly
-    eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
+    embed_sampler = SequentialSampler(embed_dataset)
+    embed_dataloader = DataLoader(embed_dataset, sampler=embed_sampler, batch_size=args.eval_batch_size)
 
     # multi-gpu eval
     if args.n_gpu > 1:
@@ -83,13 +83,10 @@ def create_embeddings(args, model, tokenizer):
 
     # Eval!
     logger.info("***** Running evaluation *****")
-    logger.info("  Num examples = %d", len(eval_dataset))
+    logger.info("  Num examples = %d", len(embed_dataset))
     logger.info("  Batch size = %d", args.eval_batch_size)
-    eval_loss = 0.0
-    nb_eval_steps = 0
-    preds = None
-    out_label_ids = None
-    for batch in tqdm(eval_dataloader, desc="Creating embeddings"):
+
+    for batch in tqdm(embed_dataloader, desc="Creating embeddings"):
         model.eval()
         batch = tuple(t.to(args.device) for t in batch)
 
@@ -107,12 +104,16 @@ def create_embeddings(args, model, tokenizer):
             #sequence_output, pooled_output, hidden_states, attentions = outputs #da spostare sulla gpu
         
         #TODO: bisogna usare questo per avere una rappresentazione della frase con un unico vettore
-        """token_seq_repr = outputs[0]
+        #Per avere per ogni frase un unico vettore
+        token_seq_repr = outputs[0]
         char_seq_repr = outputs[2]
+        print(f'token_seq_repr shape: {token_seq_repr.shape}')
         seq_repr = torch.cat([token_seq_repr, char_seq_repr], dim=-1)
-        seq_output = torch.mean(seq_repr, dim=1)"""
+        print(f'seq_repr shape: {seq_repr.shape}')
+        seq_output = torch.mean(seq_repr, dim=1)
+        results.append(seq_output)
         
-        results.append(outputs)
+        #results.append(outputs)
 
     return results
 
@@ -139,7 +140,7 @@ def create_examples_from_file(file_path) -> InputExample:
             examples.append(InputExample(guid=guid, text_a=text_a))
     return examples
     
-def emb_convert_examples_to_features(examples, tokenizer,
+def emb_convert_examples_to_features(examples, tokenizer, #examples è della classe InputExample
                                     max_length=512,
                                     pad_on_left=False,
                                     pad_token=0,

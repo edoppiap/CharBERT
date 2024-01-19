@@ -436,7 +436,7 @@ class CharBertEncoder(nn.Module):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            #viene usato lo stesso bertLayer per le due sequenze (token e parole) però non venogono passate concatenate
+            #viene usato lo stesso bertLayer per le due sequenze (token e parole) però non vengono passate concatenate
             layer_outputs = layer_module(hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask)
             char_layer_outputs = layer_module(char_hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask)
 

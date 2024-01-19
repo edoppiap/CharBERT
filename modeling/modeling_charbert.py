@@ -288,6 +288,154 @@ class CharBertModel(BertPreTrainedModel):
         outputs = (sequence_output, pooled_output, char_sequence_output, char_pooled_output) + char_encoder_outputs[1:]  # add hidden_states and attentions if they are here
         return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
 
+from sentence_transformers.models import Transformer
+from typing import List, Dict, Optional, Union, Tuple
+
+from modeling.configuration_bert import BertConfig
+from modeling.configuration_roberta import RobertaConfig
+
+from modeling.modeling_charbert import CharBertModel
+from modeling.modeling_roberta import RobertaModel
+
+from transformers import WEIGHTS_NAME, BertTokenizer, RobertaTokenizer
+
+from processors.utils_emb import emb_convert_examples_to_features
+
+class CharBertTransformer(Transformer):
+    def __init__(
+        self,
+        model_type: str, #bert or roberta
+        model_name_or_path: str,
+        char_vocab: Optional[str] = './data/dict/bert_char_vocab',
+        max_seq_length: Optional[int] = None,
+        model_args: Dict = {},
+        cache_dir: Optional[str] = None,
+        tokenizer_args: Dict = {},
+        do_lower_case: bool = False,
+        tokenizer_name_or_path: str = None):
+        
+        #TODO: è necessario init anche il super? penso di no
+        super(CharBertTransformer, self).__init__(model_name_or_path)
+        MODEL_CLASSES = {
+            'bert': (BertConfig, CharBertModel, BertTokenizer),
+            'roberta': (RobertaConfig, RobertaModel, RobertaTokenizer),
+        }
+        
+        self.model_type = model_type
+        self.char_vocab = char_vocab
+        
+        config_class, model_class, tokenizer_class = MODEL_CLASSES[model_type]
+
+        config = config_class.from_pretrained(model_name_or_path, cache_dir = cache_dir)
+        
+        self.tokenizer = tokenizer_class.from_pretrained(model_name_or_path,
+                                                    do_lower_case = do_lower_case,
+                                                    cache_dir = cache_dir)
+        
+        self.auto_model = model_class.from_pretrained(model_name_or_path,
+                                            from_tf = bool('.ckpt' in model_name_or_path),
+                                            config=config,
+                                            cache_dir = cache_dir)
+
+        #TODO: il modello per ora è su cpu, da qualche parte bisogna mettere .to(device)
+        
+        if max_seq_length is None:
+            if (
+                hasattr(self.auto_model, "config")
+                and hasattr(self.auto_model.config, "max_position_embeddings")
+                and hasattr(self.tokenizer, "model_max_length")
+            ):
+                max_seq_length = min(self.auto_model.config.max_position_embeddings, self.tokenizer.model_max_length)
+        
+        self.max_seq_length = max_seq_length
+        
+        if tokenizer_name_or_path is not None:
+            self.auto_model.config.tokenizer_class = self.tokenizer.__class__.__name__
+            
+
+    def forward(self, features):
+        """Returns token_embeddings, cls_token"""
+        #trans_features = {"input_ids": features["input_ids"], "attention_mask": features["attention_mask"]}
+        outputs = self.auto_model(**features)
+        token_seq_repr = outputs[0]
+        char_seq_repr = outputs[2]
+        seq_repr = torch.cat([token_seq_repr, char_seq_repr], dim=-1)
+        features.update({"token_embeddings": seq_repr})
+        
+        return features #è un dict
+    
+    def tokenize(self, texts: Union[List[str], List[Dict], List[Tuple[str, str]]]):
+        """
+        Tokenizes a text and maps tokens to token-ids
+        """
+        output = {}
+        if isinstance(texts[0], str): #se texts è una lista di stringhe, texts è una lista di frasi
+            to_tokenize = [texts] 
+        elif isinstance(texts[0], dict):
+            to_tokenize = []
+            output["text_keys"] = []
+            for lookup in texts:
+                text_key, text = next(iter(lookup.items()))
+                to_tokenize.append(text)
+                output["text_keys"].append(text_key)
+            to_tokenize = [to_tokenize]
+        else:
+            batch1, batch2 = [], []
+            for text_tuple in texts:
+                batch1.append(text_tuple[0])
+                batch2.append(text_tuple[1])
+            to_tokenize = [batch1, batch2]
+            
+        """# strip
+        to_tokenize = [[str(s).strip() for s in col] for col in to_tokenize]
+
+        # Lowercase
+        if self.do_lower_case:
+            to_tokenize = [[s.lower() for s in col] for col in to_tokenize]"""
+        
+        
+        features = emb_convert_examples_to_features(
+                                texts, #InputExample
+                                self.tokenizer,
+                                max_length=self.max_seq_length,
+                                pad_on_left=bool(self.model_type in ['xlnet']),                 # pad on the left for xlnet
+                                pad_token=self.tokenizer.convert_tokens_to_ids([self.tokenizer.pad_token])[0],
+                                pad_token_segment_id=4 if self.model_type in ['xlnet'] else 0,
+                                char_vocab_file=self.char_vocab,
+                                model_type=self.model_type)
+        
+        # Convert to Tensors and build dataset
+        all_char_ids = torch.tensor([f.char_input_ids for f in features], dtype=torch.long)
+        all_start_ids = torch.tensor([f.start_ids for f in features], dtype=torch.long)
+        all_end_ids = torch.tensor([f.end_ids for f in features], dtype=torch.long)
+        all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+        all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
+        all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+        
+        """output.update(
+            self.tokenizer(
+                *to_tokenize,
+                padding=True,
+                truncation="longest_first",
+                return_tensors="pt",
+                max_length=self.max_seq_length,
+            )
+        )"""
+        output.update({
+            'char_input_ids': all_char_ids,
+            'start_ids': all_start_ids,
+            'end_ids': all_end_ids,
+            'input_ids': all_input_ids,
+            'attention_mask': all_attention_mask,
+            'token_type_ids': all_token_type_ids,
+        })
+        
+                #(features)
+        return output #output must be a dict. Ogni elemento è un tensore dim (num_sentences, max_seq_length)
+                    #viene passato come input a self.forward
+        
+    
+    
 
 class CharBertForQuestionAnswering(BertPreTrainedModel):
     r"""
