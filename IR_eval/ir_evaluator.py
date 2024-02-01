@@ -7,7 +7,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from modeling.modeling_charbert import CharBertTransformer
 from sentence_transformers import models, SentenceTransformer
 from modeling.charbert_embeddings import CharBertEmbeddings
-#from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 #Chroma
 from langchain_community.vectorstores import Chroma
@@ -22,6 +22,7 @@ from datasets import load_dataset
 class IrEvaluator:
     def __init__(self,
                 repo_user_prj, #example: 'reingart/pyafipws'
+                embedder = 'charbert', #charbert or bert
                 root_git_clone = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/git_clones/',
                 
                 ):
@@ -32,6 +33,8 @@ class IrEvaluator:
         self.repo_user_prj = repo_user_prj
         self.prj_name = repo_user_prj.split('/')[-1]
         self.repo_path = root_git_clone / self.prj_name
+        
+        self.llm = None
 
         if not os.path.exists(self.repo_path):
             self.repo_path.mkdir()
@@ -42,13 +45,17 @@ class IrEvaluator:
 
         
         #Create the sentence Transformer
-        charBertTransformer = CharBertTransformer(model_type = 'bert',
-                                                model_name_or_path = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/models/charbert-bert-wiki',
-                                                char_vocab = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/data/dict/bert_char_vocab'
-                                                    )
-        pooling_model = models.Pooling(charBertTransformer.get_word_embedding_dimension()*2)
-        sentTrans = SentenceTransformer(modules=[charBertTransformer, pooling_model])
-        self.embeddings = CharBertEmbeddings(sentTrans)
+        if embedder == 'bert':
+            self.embeddings = HuggingFaceEmbeddings(model_name_or_path = 'bert-base-uncased')
+            
+        elif embedder == 'charbert':
+            charBertTransformer = CharBertTransformer(model_type = 'bert',
+                                                    model_name_or_path = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/models/charbert-bert-wiki',
+                                                    char_vocab = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/data/dict/bert_char_vocab'
+                                                        )
+            pooling_model = models.Pooling(charBertTransformer.get_word_embedding_dimension()*2)
+            sentTrans = SentenceTransformer(modules=[charBertTransformer, pooling_model])
+            self.embeddings = CharBertEmbeddings(sentTrans)
         
         
     def create_db(self, chunk_size = 2000, chunk_overlap = 200):
@@ -86,8 +93,21 @@ class IrEvaluator:
         df = dataset.to_pandas()
         self.df = df[df.repo == self.repo_user_prj]
         print(f'Dataset loaded: {len(self.df)} rows')
+        
+    def init_llm(self):
+        #Inizializza il llm
+        self.llm = ...
     
-    def evaluate_retriever_via_df(self): #TODO vedere se si può passare da qui similarity e k
+    def generate_code_query(self, query):
+        #Questo metodo deve prendere una query in linguaggio naturale
+        # e restituire una query in linguaggio di programmazione in formato stringa
+        if self.llm is None:
+            self.init_llm()
+        
+        pass
+        return None
+        
+    def evaluate_retriever_via_df(self, code_query = False): #TODO vedere se si può passare da qui similarity e k
         k = self.retriever.search_kwargs["k"]
         num_total = len(self.df)
         
@@ -103,7 +123,13 @@ class IrEvaluator:
         
         for idx, row in self.df.iterrows():
             #print(f'{row.summary = }')
-            hits = self.retriever.get_relevant_documents(row.summary)
+            
+            query = row.summary
+            
+            if code_query:
+                query = self.generate_code_query(query)
+                
+            hits = self.retriever.get_relevant_documents(query)
             preds = [hits[i].metadata['source'].replace(self.repo_path + '/', '') for i in range(k)]
             #print(f'{preds = }')
             #print(f'{row.path=}')
@@ -119,4 +145,3 @@ class IrEvaluator:
                 summary['wrong_idx'].append(idx)
             
         return summary
-        
