@@ -20,11 +20,17 @@ from pathlib import Path
 from datasets import load_dataset
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
+import time
 
-class IrEvaluator:
+from langchain_google_genai import GoogleGenerativeAI
+import google.generativeai as genai
+
+class IrRepoEvaluator:
     def __init__(self,
                 repo_user_prj, #example: 'reingart/pyafipws'
                 root_git_clone = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/git_clones/',
+                root_charbert = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/',
                 ):
 
 
@@ -33,6 +39,7 @@ class IrEvaluator:
         self.repo_user_prj = repo_user_prj
         self.prj_name = repo_user_prj.split('/')[-1]
         self.repo_path = self.root_git_clone / self.prj_name
+        self.root_charbert = root_charbert
                 
         self.llm = None
 
@@ -48,12 +55,12 @@ class IrEvaluator:
     def get_embeddings(self, embedder):
         #Create the sentence Transformer
         if embedder == 'bert':
-            embeddings = HuggingFaceEmbeddings(model_name_or_path = 'bert-base-uncased')
+            embeddings = HuggingFaceEmbeddings(model_name = 'bert-base-uncased')
             
         elif embedder == 'charbert':
             charBertTransformer = CharBertTransformer(model_type = 'bert',
-                                                    model_name_or_path = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/models/charbert-bert-wiki',
-                                                    char_vocab = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/data/dict/bert_char_vocab'
+                                                    model_name_or_path = os.path.join( self.root_charbert ,'models/charbert-bert-wiki'),
+                                                    char_vocab =  os.path.join( self.root_charbert , 'data/dict/bert_char_vocab')
                                                         )
             pooling_model = models.Pooling(charBertTransformer.get_word_embedding_dimension()*2)
             sentTrans = SentenceTransformer(modules=[charBertTransformer, pooling_model])
@@ -62,7 +69,7 @@ class IrEvaluator:
         return embeddings
     
     
-    def get_db(self, chunk_size = 2000, chunk_overlap = 200):
+    def get_db(self, embeddings, chunk_size = 2000, chunk_overlap = 200):
         #Create the loader
         loader = GenericLoader.from_filesystem(
                 path = self.repo_path,
@@ -82,7 +89,8 @@ class IrEvaluator:
             )
         texts = python_splitter.split_documents(docs)
         print(f'Splitter: {len(texts)} chunks')
-        db = Chroma.from_documents(texts, self.embeddings)
+        
+        db = Chroma.from_documents(texts, embeddings)
         return db
     
     """def create_retriever(self, search_type = "mmr", k = 10):
@@ -97,21 +105,27 @@ class IrEvaluator:
         df = dataset.to_pandas()
         
         df = df[df.repo == self.repo_user_prj]
-        print(f'Dataset loaded: {len(self.df)} rows')
+        df = self.gen_all_code_query(df)
+        print(f'Dataset loaded: {len(df)} rows.\nCols names: {df.columns}')
         return df
         
     def init_llm(self):
         #Inizializza il llm
-        self.llm = ...
+        os.environ["GOOGLE_API_KEY"] = 'AIzaSyDVRweStnbEJUjEAV9Mah2ZhEUp2kz0w2M'
+        self.llm = GoogleGenerativeAI(model="gemini-pro", temperature=0.7)
     
-    def generate_code_query(self, query):
+    def gen_single_code_query(self, query):
         #Questo metodo deve prendere una query in linguaggio naturale
         # e restituire una query in linguaggio di programmazione in formato stringa
         if self.llm is None:
             self.init_llm()
-        
-        pass
-        return None
+        context = """You are an AI assiantant that converts natural language in python code, return only code in your answer. This is the question: """
+        return self.llm.invoke(context+query).replace("```python\n", "").replace("\n```","").replace("```python \n","").replace("```python  \n","")
+    
+    def gen_all_code_query(self, df):
+        tqdm.pandas(desc = "Creating code queries")
+        df['code_query'] = df.summary.progress_apply(self.gen_single_code_query)
+        return df
         
     def evaluate_db_via_df(self, db, df, search_type, code_query: bool = None):
         #you can pass here search type and k to avoid calling create_retriever to modify the retriever
@@ -127,15 +141,15 @@ class IrEvaluator:
             'top@' : [0]*k,
         }
         
-        for idx, row in df.iterrows():
+        for idx, row in tqdm(df.iterrows(), total = df.shape[0], desc = 'Evaluating', position = 0, leave = True):
             #print(f'{row.summary = }')
             
-            query = row.summary
-            
             if code_query:
-                query = self.generate_code_query(query)
+                query = row.code_query
+            else:
+                query = row.summary
             
-            hits = self.retriever.get_relevant_documents(query)
+            hits = retriever.get_relevant_documents(query)
             preds = [hits[i].metadata['source'].replace(str(self.repo_path) + '/', '') for i in range(k)]
             #print(f'{preds = }')
             #print(f'{row.path=}')
@@ -156,27 +170,36 @@ class IrEvaluator:
         df = self.load_and_get_dataset_as_df()
         
         for embedder in tqdm(['charbert', 'bert'], desc='Embedder'): #for each embedder
-            print(f'Embedder: {embedder}')
+            print(f'\nEmbedder: {embedder}')
             embeddings = self.get_embeddings(embedder)
             
             for chunk_size in [1000, 2000, 3000]: #for each chunk size
-                print(f'\tChunk size: {chunk_size}')
-                db = self.get_db(chunk_size = chunk_size)
+                print(f'\nChunk size: {chunk_size}')
+                db = self.get_db(embeddings = embeddings, chunk_size = chunk_size)
                 
-                for code_query in [False, True]: #for code query or not
-                    print(f'\t\tCode query: {code_query}')
+                for code_query in [True, False]: #for code query or not
+                    print(f'\nCode query: {code_query}')
                     
                     for search_type in ['mmr', 'similarity']: #for each search type
                         summary = self.evaluate_db_via_df(db, df, search_type = search_type, code_query = code_query)
+                        #change format
+                        summary['right_idx'] = [summary['right_idx']]
+                        summary['wrong_idx'] = [summary['wrong_idx']]
+                        summary['top@'] = [np.array(summary['top@'])]
                         #attach run info to summary
                         summary['embedder'] = embedder
                         summary['chunk_size'] = chunk_size
                         summary['code_query'] = code_query
                         summary['search_type'] = search_type
-                        pprint(summary)
+                        
+                        print(f"{summary['embedder']=}")
+                        print(f"{summary['chunk_size']=}")
+                        print(f"{summary['code_query']=}")
+                        print(f"{summary['search_type']=}")
+                        print(f"{summary['top@'] = }\n")
+                        
                         tmp_df = pd.DataFrame(summary)
                         result_df = pd.concat([result_df, tmp_df])
                         
                 result_df.to_csv('result_df.csv', index = False)
                 break
-                        
