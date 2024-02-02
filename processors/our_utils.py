@@ -26,7 +26,8 @@ def save_data_metadata_tsv(db, emb_file_name: str, meta_file_name: str, folder_l
 
     df_emb = pd.DataFrame()
     for emb in res['embeddings']:
-        df_emb = df_emb.append(pd.Series(emb), ignore_index=True)
+        #df_emb = df_emb.append(pd.Series(emb), ignore_index=True)
+        df_emb = pd.concat([df_emb, pd.Series(emb).to_frame().T], ignore_index = True)
     #df_emb.to_csv(os.path.join(out_root_path, emb_file_name), sep='\t', header=False, index=False)
     
     if folder_level <= 0:
@@ -37,7 +38,7 @@ def save_data_metadata_tsv(db, emb_file_name: str, meta_file_name: str, folder_l
     df_emb_meta = pd.DataFrame(columns=cols)
     for meta_dict in res['metadatas']:
         new_row = pd.Series(clean_source(meta_dict['source'], folder_level))
-        pd.concat([df_emb_meta, new_row.to_frame().T], ignore_index = True)
+        df_emb_meta = pd.concat([df_emb_meta, new_row.to_frame().T], ignore_index = True)
     
     if folder_level == 1:
         df_emb_meta.to_csv(os.path.join(out_root_path, meta_file_name), sep='\t', header=False, index=False)

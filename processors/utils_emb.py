@@ -60,7 +60,7 @@ def emb_convert_examples_to_features(examples, tokenizer, #examples è della cla
 
         # add char level information
         all_seq_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        print(f'all_seq_tokens: {" ".join(all_seq_tokens)}')
+        #print(f'all_seq_tokens: {" ".join(all_seq_tokens)}')
         char_ids = []
         start_ids = []
         end_ids = []
