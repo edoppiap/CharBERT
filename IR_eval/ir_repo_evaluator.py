@@ -138,7 +138,7 @@ class IrRepoEvaluator:
         summary = {
             'right_idx': [],
             'wrong_idx': [],
-            'top@' : [0]*k,
+            'top_at' : [0]*k,
         }
         
         for idx, row in tqdm(df.iterrows(), total = df.shape[0], desc = 'Evaluating', position = 0, leave = True):
@@ -157,7 +157,7 @@ class IrRepoEvaluator:
                 match_idx = preds.index(row.path)
                 summary['right_idx'].append(idx)
                 for j in range(match_idx, k):
-                    summary['top@'][j] += 1/num_total
+                    summary['top_at'][j] += 1/num_total
             except:
                 #print(f'{preds = }')
                 #print(f'{row.path=}\n\n')
@@ -175,7 +175,13 @@ class IrRepoEvaluator:
             
             for chunk_size in [1000, 2000, 3000]: #for each chunk size
                 print(f'\nChunk size: {chunk_size}')
+                #Quando crei un nuovo db devi cancellare quello vecchio, altrimenti si aggiungono
+                if 'db' in locals():
+                    print('Deleting old db')
+                    db.delete_collection()
+                    
                 db = self.get_db(embeddings = embeddings, chunk_size = chunk_size)
+                print(f"Num_chunks in db {len(db.get()['ids'])}")
                 
                 for code_query in [True, False]: #for code query or not
                     print(f'\nCode query: {code_query}')
@@ -185,21 +191,25 @@ class IrRepoEvaluator:
                         #change format
                         summary['right_idx'] = [summary['right_idx']]
                         summary['wrong_idx'] = [summary['wrong_idx']]
-                        summary['top@'] = [np.array(summary['top@'])]
+                        #Salva ogni top in una colonna diversa
+                        summary['top_at'] = [np.array(summary['top_at'])]
+                        
                         #attach run info to summary
                         summary['embedder'] = embedder
                         summary['chunk_size'] = chunk_size
                         summary['code_query'] = code_query
                         summary['search_type'] = search_type
+                        summary['prj_name'] = self.prj_name
+                        summary['num_queries'] = len(df)
                         
                         print(f"{summary['embedder']=}")
                         print(f"{summary['chunk_size']=}")
                         print(f"{summary['code_query']=}")
                         print(f"{summary['search_type']=}")
-                        print(f"{summary['top@'] = }\n")
+                        print(f"{summary['top_at'] = }\n")
                         
                         tmp_df = pd.DataFrame(summary)
                         result_df = pd.concat([result_df, tmp_df])
                         
-                result_df.to_csv('result_df.csv', index = False)
-                break
+                #result_df.to_csv(f'Ir_results/{self.prj_name}.csv', index = False)
+                result_df.to_json(f'Ir_results/{self.prj_name}.json', orient='records')
