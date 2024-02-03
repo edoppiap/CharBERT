@@ -336,8 +336,6 @@ class CharBertTransformer(Transformer):
                                             from_tf = bool('.ckpt' in model_name_or_path),
                                             config=config,
                                             cache_dir = cache_dir)
-
-        #TODO: il modello per ora è su cpu, da qualche parte bisogna mettere .to(device)
         
         if max_seq_length is None:
             if (
