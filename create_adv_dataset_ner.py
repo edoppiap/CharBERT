@@ -117,11 +117,11 @@ def main():
     # Read the file line by line
         for line in tqdm(file):
             # Split the line into words
-            words = line.split()
+            if line != '\n':
+                word = line.split(' ')[0]
+                label = line.split(' ')[1]
             
-            # Apply custom function to the first word
-            if words:
-                word = words[0]
+                # Apply custom function to the first word
                 ori_word = copy.deepcopy(word)
                 if rng.random() < args.adv_probability:
                     word = create_adv_word(args, word , rng, debug = args.debug)
@@ -132,10 +132,10 @@ def main():
                 else:
                     num_same += 1
             
-                adv_line = word + ' ' + words[1] + '\n'
+                adv_line = f'{word} {label}'
                 write_file.write(adv_line)
                 if args.debug:
-                    print(word + ' ' + words[1])
+                    print(adv_line)
                 
             else: #se la riga è vuota
                 write_file.write(line) #line mi aspetto sia "\n"

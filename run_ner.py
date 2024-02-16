@@ -42,6 +42,7 @@ from transformers import BertTokenizer, RobertaTokenizer
 #from transformers import CamembertConfig, CamembertForTokenClassification, CamembertTokenizer
 #from transformers import XLMRobertaConfig, XLMRobertaForTokenClassification, XLMRobertaTokenizer
 from modeling.modeling_charbert import CharBertForTokenClassification
+from modeling.modeling_bert import BertForTokenClassification
 from modeling.configuration_bert import BertConfig
 from modeling.modeling_roberta import RobertaForTokenClassification
 from modeling.configuration_roberta import RobertaConfig
@@ -54,6 +55,7 @@ ALL_MODELS = sum(
     (tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig)), ())
 
 MODEL_CLASSES = {
+    'i_am_just_bert': (BertConfig, BertForTokenClassification, BertTokenizer),
     "bert": (BertConfig, CharBertForTokenClassification, BertTokenizer),
     "i_am_just_bert": (BertConfig, BertForTokenClassification, BertTokenizer),
     "roberta": (RobertaConfig, RobertaForTokenClassification, RobertaTokenizer),
@@ -131,18 +133,17 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
             if args.model_type == 'i_am_just_bert':
-                    inputs = {'input_ids':      batch[3],
-                            'attention_mask': batch[4],
-                            'labels':         batch[6]}
-            else:  
+                inputs = {'input_ids':      batch[3],
+                          'attention_mask': batch[4],
+                          'labels':         batch[6]}
+            else:
                 inputs = {
-                        "char_input_ids": batch[0],
-                        "start_ids": batch[1],
-                        "end_ids": batch[2],
-                        "input_ids": batch[3],
-                        "attention_mask": batch[4],
-                        "labels": batch[6]}
-                
+                        "char_input_ids":   batch[0],
+                        "start_ids":        batch[1],
+                        "end_ids":          batch[2],
+                        "input_ids":        batch[3],
+                        "attention_mask":   batch[4],
+                        "labels":           batch[6]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
 
@@ -232,17 +233,16 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         with torch.no_grad():
             if args.model_type == 'i_am_just_bert':
                 inputs = {'input_ids':      batch[3],
-                        'attention_mask': batch[4],
-                        'labels':         batch[6]}
+                          'attention_mask': batch[4],
+                          'labels':         batch[6]}
             else:
                 inputs = {
-                        "char_input_ids": batch[0],
-                        "start_ids": batch[1],
-                        "end_ids": batch[2],
-                        "input_ids": batch[3],
-                        "attention_mask": batch[4],
-                        "labels": batch[6]}
-                
+                        "char_input_ids":   batch[0],
+                        "start_ids":        batch[1],
+                        "end_ids":          batch[2],
+                        "input_ids":        batch[3],
+                        "attention_mask":   batch[4],
+                        "labels":           batch[6]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)
