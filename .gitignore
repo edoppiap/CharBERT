@@ -12,3 +12,5 @@ data/attack_datasets/CharAttack_Squad_Q
 data/glue_dataset
 data/mock_data
 !Ir_results/*
+nbForDebug.ipynb
+data/IR
