@@ -31,6 +31,8 @@ class IrRepoEvaluator:
                 repo_user_prj, #example: 'reingart/pyafipws'
                 root_git_clone = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/git_clones/',
                 root_charbert = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/',
+                root_data = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/data/IR',
+                override_df = False
                 ):
 
 
@@ -40,8 +42,11 @@ class IrRepoEvaluator:
         self.prj_name = repo_user_prj.split('/')[-1]
         self.repo_path = self.root_git_clone / self.prj_name
         self.root_charbert = root_charbert
+        self.root_data = root_data
                 
         self.llm = None
+        
+        self.override_df = override_df
 
         #create the repo folder if not exists
         if not os.path.exists(self.repo_path):
@@ -61,7 +66,7 @@ class IrRepoEvaluator:
             charBertTransformer = CharBertTransformer(model_type = 'bert',
                                                     model_name_or_path = os.path.join( self.root_charbert ,'models/charbert-bert-wiki'),
                                                     char_vocab =  os.path.join( self.root_charbert , 'data/dict/bert_char_vocab')
-                                                        )
+                                                    )
             pooling_model = models.Pooling(charBertTransformer.get_word_embedding_dimension()*2)
             sentTrans = SentenceTransformer(modules=[charBertTransformer, pooling_model])
             embeddings = CharBertEmbeddings(sentTrans)
@@ -106,6 +111,17 @@ class IrRepoEvaluator:
         
         df = df[df.repo == self.repo_user_prj]
         df = self.gen_all_code_query(df)
+        if self.override_df:
+            df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
+            print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')
+            
+        elif not self.override_df and os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
+            raise Exception(f'File {self.root_data}/{self.prj_name}.csv already exists, set override_df = True to overwrite it')
+        
+        elif not self.override_df and not os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
+            df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
+            print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')    
+        
         print(f'Dataset loaded: {len(df)} rows.\nCols names: {df.columns}')
         return df
         
@@ -212,4 +228,7 @@ class IrRepoEvaluator:
                         result_df = pd.concat([result_df, tmp_df])
                         
                 #result_df.to_csv(f'Ir_results/{self.prj_name}.csv', index = False)
-                result_df.to_json(f'Ir_results/{self.prj_name}.json', orient='records')
+                result_df.to_json(f'outputs/Ir_results/{self.prj_name}.json', orient='records')
+        
+        print(f'outputs/Ir_results/{self.prj_name}.json')
+        print('Done')
