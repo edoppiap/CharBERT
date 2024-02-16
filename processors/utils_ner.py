@@ -114,7 +114,7 @@ def convert_examples_to_features(examples,
             - True (XLNet/GPT pattern): A + [SEP] + B + [SEP] + [CLS]
         `cls_token_segment_id` define the segment id associated to the CLS token (0 for BERT, 2 for XLNet)
     """
-    inverted_label_map = {str(i): label for i,label in enumerate(label_list)}
+
     label_map = {label: i for i, label in enumerate(label_list)}
     char2ids_dict = load_char_to_ids_dict(char_vocab_file=char_vocab_file)
 
@@ -134,7 +134,7 @@ def convert_examples_to_features(examples,
                 
             tokens.extend(word_tokens)
             # Use the real label id for the first token of the word, and padding ids for the remaining tokens
-            label_ids.extend([label_map[inverted_label_map[label]]] + [pad_token_label_id] * (len(word_tokens) - 1))
+            label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
             #if len(word_tokens) > 1:
                 #label_ids.extend([pad_token_label_id] * len(word_tokens))
             #    label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
