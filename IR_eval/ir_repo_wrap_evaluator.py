@@ -29,11 +29,12 @@ import google.generativeai as genai
 
 class IrRepoEvaluator:
     def __init__(self,
-                repo_user_prj, #example: 'reingart/pyafipws'
+                repo_user_prj, #example: 'cisco-sas/kitty', 'aouyar/PyMunin', 'knipknap/exscript'
                 root_git_clone = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/git_clones/',
                 root_charbert = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/',
                 root_data = '/content/drive/MyDrive/PoliTo/NLP_Polito/progetto/codice/CharBERT/data/wrap_IR',
-                override_df = False
+                override_df = False,
+                regen_code_queries = True
                 ):
 
 
@@ -44,7 +45,7 @@ class IrRepoEvaluator:
         self.repo_path = self.root_git_clone / self.prj_name
         self.root_charbert = root_charbert
         self.root_data = root_data
-                
+        self.regen_code_queries = regen_code_queries        
         self.llm = None
         
         self.override_df = override_df
@@ -75,7 +76,7 @@ class IrRepoEvaluator:
         return embeddings
     
     
-    def get_db(self, embeddings, chunk_size = 2000, chunk_overlap = 0):
+    def get_db(self, embeddings, chunk_size, chunk_overlap = 0):
         #Create the loader
         loader = GenericLoader.from_filesystem(
                 path = self.repo_path,
@@ -94,9 +95,19 @@ class IrRepoEvaluator:
 
         i_to_del = []
         for i, doc in enumerate(docs):
-            matches = re.findall(pattern, doc.page_content)
-            doc.metadata['wrap_name'] = matches[0]
-            if doc.metadata['content_type'] == 'simplified_code':
+            
+            if 'content_type' in doc.metadata:
+                matches = re.findall(pattern, doc.page_content)
+                
+                if len(matches) == 0:
+                    i_to_del.append(i)
+                
+                else:
+                    doc.metadata['wrap_name'] = matches[0]
+                    if doc.metadata['content_type'] == 'simplified_code':
+                        i_to_del.append(i)
+            
+            else:
                 i_to_del.append(i)
                 
         for ix in reversed(i_to_del):
@@ -118,26 +129,38 @@ class IrRepoEvaluator:
         self.retriever = self.db.as_retriever(search_type = search_type, search_kwargs = {"k": k})"""
     
     def load_and_get_dataset_as_df(self):
-        dataset = load_dataset('Nan-Do/code-search-net-python', split = "train")
-        interesting_feat = ['repo', 'path', 'func_name', 'summary']
-        dataset = dataset.select_columns(column_names=interesting_feat)
-        
-        df = dataset.to_pandas()
-        
-        df = df[df.repo == self.repo_user_prj]
-        df = self.gen_all_code_query(df)
-        if self.override_df:
-            df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
-            print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')
+        df_path = f'{self.root_data}/{self.prj_name}.json'
+        if os.path.exists(df_path) and not self.regen_code_queries:
+            #df = pd.read_csv(f'{self.root_data}/{self.prj_name}.csv')
+            #print(f"Loaded df from '{self.root_data}/{self.prj_name}.csv")
+            with open(df_path) as json_file:
+                df = pd.read_json(json_file)
             
-        elif not self.override_df and os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
-            raise Exception(f'File {self.root_data}/{self.prj_name}.csv already exists, set override_df = True to overwrite it')
-        
-        elif not self.override_df and not os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
-            df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
-            print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')    
-        
-        print(f'Dataset loaded: {len(df)} rows.\nCols names: {df.columns}')
+        else:
+            dataset = load_dataset('Nan-Do/code-search-net-python', split = "train")
+            interesting_feat = ['repo', 'path', 'func_name', 'summary']
+            dataset = dataset.select_columns(column_names=interesting_feat)
+            
+            df = dataset.to_pandas()
+            
+            df = df[df.repo == self.repo_user_prj]
+            df = self.gen_all_code_query(df)
+            save = self.override_df or (not self.override_df and not os.path.exists(df_path))
+            
+            if save:
+                #df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
+                #print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')
+                df.to_json(df_path, orient='records')
+                print(f'Dataset saved at: {self.root_data}/{self.prj_name}.json')
+                
+            else:
+                raise Exception(f'File {self.root_data}/{self.prj_name}.json already exists, set override_df = True to overwrite it')
+            
+            """elif not self.override_df and not os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
+                df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
+                print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')"""
+            
+            print(f'Dataset loaded: {len(df)} rows.\nCols names: {df.columns}')
         return df
         
     def init_llm(self):
@@ -161,7 +184,10 @@ class IrRepoEvaluator:
     def evaluate_db_via_df(self, db, df, search_type, code_query: bool = None):
         #you can pass here search type and k to avoid calling create_retriever to modify the retriever
         # however if must be called before this method the first time
-        k = 10
+        if search_type == "mmr":
+            k = 20
+        else:
+            k = 50
         num_total = len(df)
         
         retriever = db.as_retriever(search_type = search_type, search_kwargs = {"k": k})
@@ -183,9 +209,9 @@ class IrRepoEvaluator:
             hits = retriever.get_relevant_documents(query)
             preds = [(hits[i].metadata['source'].replace(str(self.repo_path) + '/', ''),
                             hits[i].metadata['wrap_name']) for i in range(k)]
-            #print(f'{preds = }')
-            #print(f'{row.path=}')
-            label = (row.path, row.func_name)
+            label = (row.path, row.func_name.split(".")[0])
+            print(f'{preds = }')
+            print(f'{label=}')
             try:
                 match_idx = preds.index(label)
                 summary['right_idx'].append(idx)
