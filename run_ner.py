@@ -243,6 +243,11 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                         "input_ids":        batch[3],
                         "attention_mask":   batch[4],
                         "labels":           batch[6]}
+                
+                print(f'{inputs['char_input_ids'].size() = }\n{inputs['start_ids'].size() = }\n{inputs['end_ids'].size() = }\n{inputs['input_ids'].size() = }\n{inputs['attention_mask'].size() = }')
+                print(f'{inputs['labels'].size() = }')
+                
+                
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)
