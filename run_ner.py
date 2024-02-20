@@ -244,8 +244,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                         "attention_mask":   batch[4],
                         "labels":           batch[6]}
                 
-                print(f'{inputs['char_input_ids'].size() = }\n{inputs['start_ids'].size() = }\n{inputs['end_ids'].size() = }\n{inputs['input_ids'].size() = }\n{inputs['attention_mask'].size() = }')
-                print(f'{inputs['labels'].size() = }')
+                print(f"{inputs['char_input_ids'].size() = }\n{inputs['start_ids'].size() = }\n{inputs['end_ids'].size() = }\n{inputs['input_ids'].size() = }\n{inputs['attention_mask'].size() = }")
+                print(f"{inputs['labels'].size() = }")
                 
                 
             if args.model_type != "distilbert":
