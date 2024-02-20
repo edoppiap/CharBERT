@@ -76,8 +76,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
         tb_writer = SummaryWriter()
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-    # train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    train_sampler = SequentialSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
 
     if args.max_steps > 0:
@@ -146,20 +145,10 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                         "attention_mask":   batch[4],
                         "labels":           batch[6]}
                 
-                print(f"{inputs['char_input_ids'].size() = }\n{inputs['start_ids'].size() = }\n{inputs['end_ids'].size() = }\n{inputs['input_ids'].size() = }\n{inputs['attention_mask'].size() = }")
-                print(f"{inputs['labels'].size() = }")
-                
-                
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
 
-            try:
-                outputs = model(**inputs)
-            except RuntimeError:
-                print(f'{step = } ')
-                print(f'{batch[0] = }\n{batch[1] = }\n{batch[2] = }\n{batch[3] = }\n{batch[4] = }\n{batch[5] = }\n{batch[6] = }')
-                tokenizer.decode([id for ids in inputs['input_ids'] for id in ids ])
-                raise RuntimeError
+            outputs = model(**inputs)
                 
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
 
