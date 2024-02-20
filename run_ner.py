@@ -158,7 +158,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
             except RuntimeError:
                 print(f'{step = } ')
                 print(f'{batch[0] = }\n{batch[1] = }\n{batch[2] = }\n{batch[3] = }\n{batch[4] = }\n{batch[5] = }\n{batch[6] = }')
-                tokenizer.decode(inputs['input_ids'].tolist())
+                tokenizer.decode([id for ids in inputs['input_ids'] for id in ids ])
                 raise RuntimeError
                 
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
