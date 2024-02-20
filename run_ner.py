@@ -235,6 +235,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                 inputs = {'input_ids':      batch[3],
                           'attention_mask': batch[4],
                           'labels':         batch[6]}
+                print(f'Sono qui')
             else:
                 inputs = {
                         "char_input_ids":   batch[0],
