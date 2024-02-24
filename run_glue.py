@@ -41,20 +41,25 @@ from transformers import WEIGHTS_NAME, BertTokenizer, RobertaTokenizer
 from transformers import AdamW, get_linear_schedule_with_warmup
 from modeling.configuration_bert import BertConfig
 from modeling.configuration_roberta import RobertaConfig
+#from transformers import AutoTokenizer, BertForSequenceClassification
 
 from transformers import glue_compute_metrics as compute_metrics
 from transformers import glue_output_modes as output_modes
 from processors.glue import glue_convert_examples_to_features as convert_examples_to_features
-from transformers import glue_processors
+#from transformers import glue_processors
+from processors.glue import glue_processors
 #from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from modeling.modeling_charbert import CharBertForSequenceClassification
 from modeling.modeling_roberta import RobertaForSequenceClassification
+
+from modeling.modeling_bert import BertForSequenceClassification
 
 logger = logging.getLogger(__name__)
 
 ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig)), ())
 
 MODEL_CLASSES = {
+    'i_am_just_bert': (BertConfig, BertForSequenceClassification, BertTokenizer),
     'bert': (BertConfig, CharBertForSequenceClassification, BertTokenizer),
     'roberta': (RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer),
 }
@@ -106,8 +111,8 @@ def train(args, train_dataset, model, tokenizer):
     # Distributed training (should be after apex fp16 initialization)
     if args.local_rank != -1:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank],
-                                                          output_device=args.local_rank,
-                                                          find_unused_parameters=True)
+                                                        output_device=args.local_rank,
+                                                        find_unused_parameters=True)
 
     # Train!
     logger.info("***** Running training *****")
@@ -125,16 +130,21 @@ def train(args, train_dataset, model, tokenizer):
     train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0], position=0, leave=True)
         for step, batch in enumerate(epoch_iterator):
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {'char_input_ids': batch[0],
-                      'start_ids':      batch[1],
-                      'end_ids':      batch[2],
-                      'input_ids':      batch[3],
-                      'attention_mask': batch[4],
-                      'labels':         batch[6]}
+            if args.model_type == 'i_am_just_bert':
+                inputs = {'input_ids':      batch[3],
+                        'attention_mask': batch[4],
+                        'labels':         batch[6]}
+            else:
+                inputs = {'char_input_ids': batch[0],
+                        'start_ids':      batch[1],
+                        'end_ids':      batch[2],
+                        'input_ids':      batch[3],
+                        'attention_mask': batch[4],
+                        'labels':         batch[6]}
             if args.model_type != 'distilbert':
                 inputs['token_type_ids'] = batch[5] if args.model_type in ['bert', 'xlnet'] else None  # XLM, DistilBERT and RoBERTa don't use segment_ids
             outputs = model(**inputs)
@@ -238,12 +248,18 @@ def evaluate(args, model, tokenizer, prefix=""):
             batch = tuple(t.to(args.device) for t in batch)
 
             with torch.no_grad():
-                inputs = {'char_input_ids': batch[0],
-                           'start_ids':     batch[1],
-                           'end_ids':     batch[2],
-                           'input_ids':     batch[3],
-                          'attention_mask': batch[4],
-                          'labels':         batch[6]}
+                if args.model_type == 'i_am_just_bert':
+                    inputs = {'input_ids':      batch[3],
+                            'attention_mask': batch[4],
+                            'labels':         batch[6]}
+                else:                
+                    inputs = {'char_input_ids': batch[0],
+                            'start_ids':     batch[1],
+                            'end_ids':     batch[2],
+                            'input_ids':     batch[3],
+                            'attention_mask': batch[4],
+                            'labels':         batch[6]}
+                    
                 if args.model_type != 'distilbert':
                     inputs['token_type_ids'] = batch[5] if args.model_type in ['bert', 'xlnet'] else None  # XLM, DistilBERT and RoBERTa don't use segment_ids
                 outputs = model(**inputs)
@@ -301,6 +317,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     else:
         logger.info("Creating features from dataset file at %s", args.data_dir)
         label_list = glue_processor.get_labels()
+        print(f'{label_list = }')
         if task in ['mnli', 'mnli-mm'] and args.model_type in ['roberta', 'xlmroberta']:
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]
@@ -470,17 +487,23 @@ def main():
 
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    #if args.model_type != 'i_am_just_bert':
     config = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path,
-                                          num_labels=num_labels,
-                                          finetuning_task=args.task_name,
-                                          cache_dir=args.cache_dir if args.cache_dir else None)
+                                        num_labels=num_labels,
+                                        finetuning_task=args.task_name,
+                                        cache_dir=args.cache_dir if args.cache_dir else None)
+    
     tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
                                                 do_lower_case=args.do_lower_case,
                                                 cache_dir=args.cache_dir if args.cache_dir else None)
+    
     model = model_class.from_pretrained(args.model_name_or_path,
                                         from_tf=bool('.ckpt' in args.model_name_or_path),
                                         config=config,
                                         cache_dir=args.cache_dir if args.cache_dir else None)
+    """elif args.model_type == 'i_am_just_bert':
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+        model = BertForSequenceClassification.from_pretrained(args.model_name_or_path)"""
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab

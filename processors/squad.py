@@ -126,32 +126,46 @@ def squad_convert_examples_to_features(
     unique_id = 1000000000
 
     features = []
+    #* per ogni oggetto SquadExample
     for (example_index, example) in enumerate(tqdm(examples, desc="Converting examples to features")):
         #if example_index == 100:
         #    break
         if is_training and not example.is_impossible:
             # Get start and end position
-            start_position = example.start_position
-            end_position = example.end_position
+            start_position = example.start_position #l'indice della parola iniziale della risposta all'interno del contest_text
+            end_position = example.end_position # l'indice dell'ultima parola della risposta all'interno del contest_text
 
             # If the answer cannot be found in the text, then skip this example.
-            actual_text = " ".join(example.doc_tokens[start_position : (end_position + 1)])
-            cleaned_answer_text = " ".join(whitespace_tokenize(example.answer_text))
+            actual_text = " ".join(example.doc_tokens[start_position : (end_position + 1)]) #stringa della risposta
+            cleaned_answer_text = " ".join(whitespace_tokenize(example.answer_text)) #stringa della risposta pulita
             if actual_text.find(cleaned_answer_text) == -1:
                 logger.warning("Could not find answer: '%s' vs. '%s'", actual_text, cleaned_answer_text)
                 continue
 
-        tok_to_orig_index = []
-        orig_to_tok_index = []
-        all_doc_tokens = []
-        for (i, token) in enumerate(example.doc_tokens):
+        tok_to_orig_index = [] #lista di indici delle parole del contesto (un indice può comparire più di una volta perchè le parole possono essere divise in più sotto-token)
+        orig_to_tok_index = [] #[0, 1, 3]
+        #Queste due liste sopra sono utili per mappare gli indici dei sotto-token con gli indici delle parole del contesto e viceversa
+        #se passi l'indice di una parola a orig_to_tok_index ti ritorna l'indice del primo sotto-token della parola
+        #se passi l'indice di un sotto-token a tok_to_orig_index ti ritorna l'indice della parola a cui appartiene
+        #Esempio:
+        #               0    1   2
+        #  contesto: "ciao come stai"
+        #                 0     0    0      1      2     2
+        #  sotto-token: ['c', 'ia', 'o', 'come', 'sta', 'i']
+        #                 0     1    2      3      4     5
+
+        #tok_to_orig_index = [0, 0, 0, 1, 2, 2]
+        #orig_to_tok_index = [0, 3, 4]
+        #
+        all_doc_tokens = [] #una lista di sotto-token (una parola può essere divisa in più sotto-token) (sono stringhe)
+        for (i, token) in enumerate(example.doc_tokens):#per ogni parola del contesto (lista di stringhe)
             orig_to_tok_index.append(len(all_doc_tokens))
             sub_tokens = []
             if model_type == 'roberta':
                 sub_tokens = tokenizer.tokenize(token, add_prefix_space=True)
             else:
-                sub_tokens = tokenizer.tokenize(token)
-            for sub_token in sub_tokens:
+                sub_tokens = tokenizer.tokenize(token) #per ogni parola del contesto, la tokenizza (un token può essere diviso in più sotto-token)
+            for sub_token in sub_tokens: #ogni sotto-token viene aggiunto alla lista di sotto-token e viene salvato l'indice della parola a cui appartiene
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
 
@@ -169,39 +183,80 @@ def squad_convert_examples_to_features(
         spans = []
         truncated_query = []
 
+        """logger.info(f'tok_to_orig_index: {tok_to_orig_index[:20]}')
+        logger.info(f'orig_to_tok_index: {orig_to_tok_index[:20]}')"""
+
+
         if model_type == 'roberta':
             truncated_query = tokenizer.encode(
                 example.question_text, add_special_tokens=False, max_length=max_query_length, add_prefix_space=True)
         else:
             truncated_query = tokenizer.encode(
                 example.question_text, add_special_tokens=False, max_length=max_query_length)
-        sequence_added_tokens = tokenizer.max_len - tokenizer.max_len_single_sentence
-        sequence_pair_added_tokens = tokenizer.max_len - tokenizer.max_len_sentences_pair
+        sequence_added_tokens = tokenizer.model_max_length - tokenizer.max_len_single_sentence
+        sequence_pair_added_tokens = tokenizer.model_max_length - tokenizer.max_len_sentences_pair
 
         span_doc_tokens = all_doc_tokens
+        #logger.info("\n\n\n")
+        jack = 0
         while len(spans) * doc_stride < len(all_doc_tokens):
+            """logger.info(f'\n\ni: {jack}')
+            jack += 1
+            logger.info(f'len(spans): {len(spans)}')
+            logger.info(f'doc_stride: {doc_stride}')
+            logger.info(f'len(all_doc_tokens): {len(all_doc_tokens)}')
 
+            logger.info(f'\n\ndoc_stride: {doc_stride}')
+            logger.info(f'max_seq_length: {max_seq_length}')
+            logger.info(f'len(truncated_query): {len(truncated_query) }')
+            logger.info(f'sequence_pair_added_tokens: {sequence_pair_added_tokens}')
+            logger.info(f'max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens: {max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens}')
+
+            logger.info(f'len(truncated_query): {len(truncated_query)}')
+            logger.info(f'\ntruncated_query_from id to tokens: {tokenizer.convert_ids_to_tokens(truncated_query)}')
+
+            logger.info(f'len(span_doc_tokens): {len(span_doc_tokens)}')
+            logger.info(f'span_doc_tokens[:30]: {span_doc_tokens[:30]}')"""
+
+            #tokenizer.padding_side = right
             encoded_dict = tokenizer.encode_plus(
-                truncated_query if tokenizer.padding_side == "right" else span_doc_tokens,
+                truncated_query if tokenizer.padding_side == "right" else span_doc_tokens, 
                 span_doc_tokens if tokenizer.padding_side == "right" else truncated_query,
                 max_length=max_seq_length,
                 return_overflowing_tokens=True,
                 pad_to_max_length=True,
                 stride=max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens,
-                truncation_strategy="only_second" if tokenizer.padding_side == "right" else "only_first",
+                truncation="only_second" if tokenizer.padding_side == "right" else "only_first",
                 add_prefix_space=True if model_type == 'roberta' else False
             )
+            #l'errore è che span_doc_tokens è una lista vuota al secondo giro
+            #
+            # text: è una lista di tokens ids (è una lista di interi) della query
+            # text_pair: è una lista di stringhe che contiene tutti i sotto-token del contesto
+            encoded_dict = tokenizer.encode_plus(
+                text = truncated_query,
+                text_pair = span_doc_tokens,
+                max_length=max_seq_length, #384
+                return_overflowing_tokens=True, #restituisce i token oltre il max_length
+                pad_to_max_length=True,
+                stride=max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens,
+                truncation="only_second",
+                add_prefix_space= False
+            )
+
 
             paragraph_len = min(
                 len(all_doc_tokens) - len(spans) * doc_stride,
                 max_seq_length - len(truncated_query) - sequence_pair_added_tokens,
             )
 
+            #prendi solo gli ids che non sono di padding
             if tokenizer.pad_token_id in encoded_dict["input_ids"]:
                 non_padded_ids = encoded_dict["input_ids"][: encoded_dict["input_ids"].index(tokenizer.pad_token_id)]
             else:
                 non_padded_ids = encoded_dict["input_ids"]
 
+            #tokens contiene i token sia della query che del contesto
             tokens = tokenizer.convert_ids_to_tokens(non_padded_ids)
 
             token_to_orig_map = {}
@@ -219,7 +274,7 @@ def squad_convert_examples_to_features(
 
             spans.append(encoded_dict)
 
-            if "overflowing_tokens" not in encoded_dict:
+            if "overflowing_tokens" not in encoded_dict or encoded_dict['overflowing_tokens'] == []:
                 break
             span_doc_tokens = encoded_dict["overflowing_tokens"]
 

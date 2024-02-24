@@ -89,7 +89,7 @@ class PretrainedConfig(object):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         print(f'cls: {cls}')
-        print(f'pretrained_model_name_or_path: {pretrained_model_name_or_path}')
+        #print(f'pretrained_model_name_or_path: {pretrained_model_name_or_path}')
         r""" Instantiate a :class:`~transformers.PretrainedConfig` (or a derived class) from a pre-trained model configuration.
 
         Parameters:

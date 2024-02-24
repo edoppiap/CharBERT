@@ -31,6 +31,8 @@ import re
 import shutil
 import copy
 
+from datasets import load_dataset
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, RandomSampler, TensorDataset
@@ -40,6 +42,7 @@ import nltk as tk
 import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf-8')
+from time import time
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -70,6 +73,11 @@ MODEL_CLASSES = {
     'roberta': (RobertaConfig, RobertaForMaskedLM, RobertaTokenizer),
 }
 
+WIKIPEDIA_DATASETS = {
+    'wikipedia_en': ('wikipedia', "20220301.en", 'train[:10%]'),
+    'wikipedia_it': ("wikipedia", "20220301.it", 'train[:50%]')
+}
+
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",["index", "label"])
 
 def _is_whitespace(c):
@@ -90,7 +98,7 @@ class TextDataset(Dataset):
             for _ in f:
                 file_raws += 1
         self.file_raws = file_raws
-        self.nraws = args.input_nraws
+        self.nraws = args.input_nraws #numero di righe da leggere ad ogni batch
         self.shuffle = True
         self.file_path = file_path
         self.finput = open(file_path, encoding="utf-8")
@@ -108,8 +116,8 @@ class TextDataset(Dataset):
 
         text = ""
         for _ in range(self.nraws):
-            line =  self.finput.readline()
-            if line:
+            line =  self.finput.readline() #legge una riga del file 
+            if line: #se non è vuota la aggiunge al testo
                 text += line.strip()
             else:
                 self.finput.seek(0)
@@ -185,7 +193,7 @@ class TextDataset(Dataset):
 
     def create_masked_lm_predictions(self, tokens, masked_lm_prob, tokenizer, rng, sub_index_to_change):
         """Creates the predictions for the masked LM objective."""
-       
+        
         vocab_words = list(tokenizer.vocab.keys())
         cand_indexes = []
         for (i, token) in enumerate(tokens):
@@ -259,6 +267,7 @@ class TextDataset(Dataset):
         return output_tokens, masked_lm_labels
 
     def create_adv_word(self, orig_token, rng):
+        # HERE IS WHERE THE MAGIC HAPPENS
         
         token = list(copy.deepcopy(orig_token))
         if len(orig_token) < 4:
@@ -362,17 +371,154 @@ class TextDataset(Dataset):
         return self.file_raws
 
     def __getitem__(self, item):
+        #print(f'type(self): {type(self)}')
+        #print(f'current_sample_idx: {self.current_sample_idx}')
         self.current_sample_idx += 1
+        #print(f'current_sample_idx: {self.current_sample_idx}')
 
         if len(self.examples) == 0 or self.current_sample_idx == len(self.examples):
+            t_0_read_nraws = time()
             self.read_nraws()
+            t_1_read_nraws = time()
+            print(f'\n\nOne read_nraws takes {t_1_read_nraws - t_0_read_nraws} seconds')
+            #print(f'len self.examples: {len(self.examples)}')
+            #print(f'self.examples: {self.examples}')
             self.current_sample_idx += 1
+            #print(f'current_sample_idx: {self.current_sample_idx}')
 
         return self.examples[self.current_sample_idx]
 
+class HuggingFaceDataset(TextDataset):
+    def __init__(self, tokenizer, args, dataset, block_size=512):
+        self.char2ids_dict = self.load_line_to_ids_dict(fname=args.char_vocab)
+        self.term2ids_dict = self.load_line_to_ids_dict(fname=args.term_vocab)
+        #path, name, split = WIKIPEDIA_DATASETS[dataset_name]
+        #self.dataset = load_dataset(path=path, name=name, split=split)
+        self.dataset_text = dataset['text']
+        
+        file_raws = 0
+        for doc in tqdm(self.dataset_text, desc='Counting the dataset raws'):
+            file_raws += len(doc.splitlines())
+        self.file_raws = file_raws
+        self.nraws = args.input_nraws #numero di righe da leggere ogni volta
+        self.shuffle = True
+        self.current_sample_idx = -1
+        self.examples = []
+        self.tokenizer = tokenizer
+        self.block_size = block_size
+        self.num_nraws = 0
+        self.args = args
+        self.rng = random.Random(args.seed)
+        
+        # NEW VARIABLES
+        self.doc_idx = 0
+        self.line_idx = 0
+        self.start_line_idx = 0
+        self.num_tot_docs = len(self.dataset_text)
+        
+    def read_nraws(self):
+        self.num_nraws += 1
+        logger.info(f'Reading the {self.num_nraws}th data block from dataset from huggingface (nraws: {self.nraws})')
+        
+        text = ""
+        read_lines = 0
+        
+        ################
+        while read_lines < self.nraws:
+            doc = self.dataset_text[self.doc_idx]
+            #doc_len = len(doc.splitlines())
+            for rel_line_idx, line in enumerate(doc.splitlines()[self.start_line_idx:]):
+                abs_line_idx = self.start_line_idx + rel_line_idx
+                if line.strip() != '': #se la linea non è vuota
+                    print(f'doc_idx: {self.doc_idx}, line_idx: {abs_line_idx}, line: {line.strip()}')
+                    text += line.strip()
+                    read_lines += 1
+                    
+                if read_lines == self.nraws: #se ho letto le righe che mi servono prima di finire il doc
+                    self.start_line_idx = abs_line_idx + 1 #riparto dalla riga successiva
+                    break
+                
+            if read_lines < self.nraws: #se ho finito il doc ma non ho ancora letto tutte le righe che mi servono
+                self.doc_idx += 1 #vado al doc successivo
+                self.start_line_idx = 0 #parto dalla riga 0
+                if self.doc_idx == self.num_tot_docs: #se ho letto tutti i doc ma mi servono ancora righe
+                    self.doc_idx = 0 #riparto da capo
+        ################
+        
+        doc_tokens = tk.word_tokenize(text)
+        if self.args.output_debug:
+            print(f'doc_tokens: {" ".join(doc_tokens)}')
+        
+        tokenized_tokens = []
+        sub_index_to_orig_token = {}
+        sub_index_to_change = {}
+        adv_labels = []
+        num_diff = num_same = 0
+        for idx, token in enumerate(doc_tokens):
+            ori_token = copy.deepcopy(token)
+            if self.rng.random() < self.args.adv_probability: #con una certa probabilità faccio adv token
+                token = self.create_adv_word(token, self.rng)
+            if ori_token != token and self.args.output_debug:
+                if num_diff % 1000 == 0:
+                    print(f"Change the token {ori_token} To {token}")
+                num_diff += 1
+            else:
+                num_same += 1
+            sub_tokens = []
+            if self.args.model_type == 'roberta':
+                sub_tokens = self.tokenizer.tokenize(token, add_prefix_space=True)
+            else:
+                sub_tokens = self.tokenizer.tokenize(token)
+            for sub_w in sub_tokens:
+                sub_index_to_orig_token[len(tokenized_tokens)] = token
+                if ori_token != token:
+                    sub_index_to_change[len(tokenized_tokens)] = True
+                    #if ori_token in self.term2ids_dict:
+                    #    adv_labels.append(self.term2ids_dict[ori_token])
+                    if ori_token.lower() in self.term2ids_dict:
+                        adv_labels.append(self.term2ids_dict[ori_token.lower()])
+                    else:
+                        adv_labels.append(self.term2ids_dict['<unk>'])
+                else:
+                    sub_index_to_change[len(tokenized_tokens)] = False
+                    adv_labels.append(-1)
+                    
+                tokenized_tokens.append(sub_w)
+        if self.args.output_debug:
+            print(f"num_same: {num_same} num_diff: {num_diff}")
+            print(f"tokenized doc: {' '.join(tokenized_tokens)}")
+
+        input_tokens, mask_labels = self.create_masked_lm_predictions(tokenized_tokens,\
+                self.args.mlm_probability, self.tokenizer, self.rng, sub_index_to_change)
+        tokenized_text = self.tokenizer.convert_tokens_to_ids(input_tokens)
+
+        if self.args.output_debug:
+            print(f"mask tokens: {' '.join(input_tokens)}")
+
+        seq_maxlen = self.block_size - 2
+        self.examples = []
+        for i in range(0, len(tokenized_text)-seq_maxlen+1, seq_maxlen): # Truncate in block of block_size
+            input_ids = self.tokenizer.build_inputs_with_special_tokens(tokenized_text[i:i+seq_maxlen])
+            labels = [-1] + mask_labels[i:i+seq_maxlen] + [-1] #For CLS and SEP
+            adv_input_labels = [-1] + adv_labels[i:i+seq_maxlen] + [-1]
+            char_input_ids, start_ids, end_ids = self.build_char_inputs(input_ids, sub_index_to_orig_token, i, self.rng, labels)
+            assert len(input_ids) == len(labels)
+            assert len(input_ids) == len(adv_input_labels)
+            assert len(input_ids) == len(start_ids)
+            assert len(input_ids) == len(end_ids)
+            self.examples.append((torch.tensor(char_input_ids), torch.tensor(start_ids), torch.tensor(end_ids),\
+                torch.tensor(input_ids), torch.tensor(labels), torch.tensor(adv_input_labels)))
+        self.current_sample_idx = -1
+        if self.shuffle:
+            random.shuffle(self.examples)
 
 def load_and_cache_examples(args, tokenizer, evaluate=False):
-    dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
+    if os.path.isfile(args.train_data_file):
+        dataset = TextDataset(tokenizer, args, file_path=args.eval_data_file if evaluate else args.train_data_file, block_size=args.block_size)
+    else:
+        path, name, split = WIKIPEDIA_DATASETS[args.train_data_file]
+        load = load_dataset(path=path, name=name, split=split, trust_remote_code=True)
+        dataset = HuggingFaceDataset(tokenizer, args, load, block_size=args.block_size)
     return dataset
 
 
@@ -418,9 +564,9 @@ def train(args, train_dataset, model, tokenizer):
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
 
-    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
+    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu) #default = 4
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=1)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size, num_workers=0)
 
     if args.max_steps > 0:
         t_total = args.max_steps
@@ -496,7 +642,7 @@ def train(args, train_dataset, model, tokenizer):
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
-            
+            t_0_dataloader = time()
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
@@ -570,6 +716,8 @@ def train(args, train_dataset, model, tokenizer):
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+            t_1_dataloader = time()
+            print(f'\n\nOne dataloader loop takes {t_1_dataloader - t_0_dataloader} seconds')
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
@@ -933,4 +1081,5 @@ def main():
 
 
 if __name__ == "__main__":
+    tk.download('punkt')
     main()

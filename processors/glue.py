@@ -118,7 +118,7 @@ def glue_convert_examples_to_features(examples, tokenizer,
 
         # add char level information
         all_seq_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        print(f'all_seq_tokens: {" ".join(all_seq_tokens)}')
+        #print(f'all_seq_tokens: {" ".join(all_seq_tokens)}')
         char_ids = []
         start_ids = []
         end_ids = []
@@ -174,7 +174,10 @@ def glue_convert_examples_to_features(examples, tokenizer,
             print(f'end_ids  : {" ".join(map(str, end_ids))}')
 
         if output_mode == "classification":
-            label = label_map[example.label]
+            if task is None: # per correggere il fatto che le label nel tsv sono 0 e 1 ma lui si aspetta entailment e not_entailment
+                label = int(example.label)
+            else:
+                label = label_map[example.label]
         elif output_mode == "regression":
             label = float(example.label)
         else:
@@ -289,10 +292,10 @@ class MnliProcessor(DataProcessor):
         for (i, line) in enumerate(lines):
             if i == 0:
                 continue
-            guid = "%s-%s" % (set_type, line[0])
-            text_a = line[8]
-            text_b = line[9]
-            label = line[-1]
+            guid = "%s-%s" % (set_type, line[3])
+            text_a = line[0]
+            text_b = line[1]
+            label = line[2]
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
