@@ -15,3 +15,5 @@ data/mock_data
 nbForDebug.ipynb
 data/IR
 .venv
+data/ner/mini_biomed_NER_2/cached_train_charbert-bert-wiki_128
+outputs/Ir_wrap_results/

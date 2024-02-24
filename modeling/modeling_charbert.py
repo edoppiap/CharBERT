@@ -314,7 +314,6 @@ class CharBertTransformer(Transformer):
         do_lower_case: bool = False,
         tokenizer_name_or_path: str = None):
         
-        #TODO: è necessario init anche il super? penso di no
         super(CharBertTransformer, self).__init__(model_name_or_path)
         MODEL_CLASSES = {
             'bert': (BertConfig, CharBertModel, BertTokenizer),
@@ -367,7 +366,8 @@ class CharBertTransformer(Transformer):
         Tokenizes a text and maps tokens to token-ids
         """
         output = {}
-        if isinstance(texts[0], str): #se texts è una lista di stringhe, texts è una lista di frasi
+        
+        """if isinstance(texts[0], str): #se texts è una lista di stringhe, texts è una lista di frasi
             to_tokenize = [texts] 
         elif isinstance(texts[0], dict):
             to_tokenize = []
@@ -382,7 +382,7 @@ class CharBertTransformer(Transformer):
             for text_tuple in texts:
                 batch1.append(text_tuple[0])
                 batch2.append(text_tuple[1])
-            to_tokenize = [batch1, batch2]
+            to_tokenize = [batch1, batch2]"""
             
         """# strip
         to_tokenize = [[str(s).strip() for s in col] for col in to_tokenize]
