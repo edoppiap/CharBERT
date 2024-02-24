@@ -14,3 +14,5 @@ data/mock_data
 !Ir_results/*
 nbForDebug.ipynb
 data/IR
+data/ner/mini_biomed_NER_2/cached_train_charbert-bert-wiki_128
+outputs/Ir_wrap_results/

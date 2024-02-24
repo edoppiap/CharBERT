@@ -129,7 +129,7 @@ class IrRepoEvaluator:
         self.retriever = self.db.as_retriever(search_type = search_type, search_kwargs = {"k": k})"""
     
     def load_and_get_dataset_as_df(self):
-        df_path = f'{self.root_data}/{self.prj_name}.json'
+        df_path = f'{self.root_data}/{self.prj_name}_df.json'
         if os.path.exists(df_path) and not self.regen_code_queries:
             #df = pd.read_csv(f'{self.root_data}/{self.prj_name}.csv')
             #print(f"Loaded df from '{self.root_data}/{self.prj_name}.csv")
@@ -151,10 +151,10 @@ class IrRepoEvaluator:
                 #df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
                 #print(f'Dataset saved at: {self.root_data}/{self.prj_name}.csv')
                 df.to_json(df_path, orient='records')
-                print(f'Dataset saved at: {self.root_data}/{self.prj_name}.json')
+                print(f'Dataset saved at: {df_path}')
                 
             else:
-                raise Exception(f'File {self.root_data}/{self.prj_name}.json already exists, set override_df = True to overwrite it')
+                raise Exception(f'File {df_path} already exists, set override_df = True to overwrite it')
             
             """elif not self.override_df and not os.path.exists(f'{self.root_data}/{self.prj_name}.csv'):
                 df.to_csv(f'{self.root_data}/{self.prj_name}.csv', index = False)
