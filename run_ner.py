@@ -128,7 +128,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
     train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0], position=0, leave=True)
         for step, batch in enumerate(epoch_iterator):
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
@@ -144,10 +144,12 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
                         "input_ids":        batch[3],
                         "attention_mask":   batch[4],
                         "labels":           batch[6]}
+                
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
 
             outputs = model(**inputs)
+                
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
 
             if args.n_gpu > 1:
@@ -243,6 +245,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                         "input_ids":        batch[3],
                         "attention_mask":   batch[4],
                         "labels":           batch[6]}
+                
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = batch[5] if args.model_type in ["bert", "xlnet"] else None  # XLM and RoBERTa don"t use segment_ids
             outputs = model(**inputs)

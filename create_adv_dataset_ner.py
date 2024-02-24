@@ -118,13 +118,17 @@ def main():
         for line in tqdm(file):
             # Split the line into words
             if line != '\n':
+                line = line.lstrip(' ')
                 word = line.split(' ')[0]
                 label = line.split(' ')[1]
             
                 # Apply custom function to the first word
                 ori_word = copy.deepcopy(word)
                 if rng.random() < args.adv_probability:
-                    word = create_adv_word(args, word , rng, debug = args.debug)
+                    try:
+                        word = create_adv_word(args, word , rng, debug = args.debug)
+                    except ValueError:
+                        print(f'{word = } - {label = }')
                     #word contiene la parola eventualmente modificata
 
                 if ori_word != word:

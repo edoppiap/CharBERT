@@ -131,10 +131,11 @@ def convert_examples_to_features(examples,
                 word_tokens = tokenizer.tokenize(word)
             else:
                 word_tokens = tokenizer.tokenize(word, add_prefix_space=True)
-                
-            tokens.extend(word_tokens)
-            # Use the real label id for the first token of the word, and padding ids for the remaining tokens
-            label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
+            
+            if len(word_tokens) != 0:
+                tokens.extend(word_tokens)
+                # Use the real label id for the first token of the word, and padding ids for the remaining tokens
+                label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
             #if len(word_tokens) > 1:
                 #label_ids.extend([pad_token_label_id] * len(word_tokens))
             #    label_ids.extend([label_map[label]] + [pad_token_label_id] * (len(word_tokens) - 1))
@@ -166,7 +167,6 @@ def convert_examples_to_features(examples,
         # For classification tasks, the first vector (corresponding to [CLS]) is
         # used as as the "sentence vector". Note that this only makes sense because
         # the entire model is fine-tuned.
-        label_ids = label_ids[:len(tokens)]
         tokens += [sep_token]
         label_ids += [pad_token_label_id]
         if sep_token_extra:
