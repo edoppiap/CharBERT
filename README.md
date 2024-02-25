@@ -6,13 +6,8 @@
  
 # CharBERT for IR, NER and sentiment analysis
 
-This repository contains resources of the following [COLING 2020](https://www.coling2020.org) paper.  
-
-**Title: CharBERT: Character-aware Pre-trained Language Model**    
-Authors: Wentao Ma, Yiming Cui, Chenglei Si, Ting Liu, Shijin Wang, Guoping Hu   
-Link: [https://arxiv.org/abs/2011.01513](https://arxiv.org/abs/2011.01513)
-
-<img src="data/CharBert.png" width="75%">
+This repository contains our code, datasets and finetuned models developed by our team Poli2Vec for the project of the DNLP course at PoliTo.</br>
+Authors: Mingrino Davide, [Pietropaolo Emanuele](https://github.com/edoppiap), [Martini Martina](https://github.com/martina-martini), [Lungo Vaschetti Jacopo](https://github.com/JacopoLungo)
 
 ## Base Models + Finetuned
 We primarily provide two models. Here are the download links:
@@ -22,19 +17,19 @@ Base
 * pre-trained CharBERT based on RoBERTa [charbert-roberta-wiki](https://drive.google.com/file/d/1tkO7_EH1Px7tXRxNDu6lzr_y8b4Q709f/view?usp=sharing)
 
 Finetuned
-* finetuned CharBERT on SST2 Plain. [charbert_SST2_plain](https://drive.google.com/file/d/1tkO7_EH1Px7tXRxNDu6lzr_y8b4Q709f/view?usp=sharing)
-* finetuned CharBERT on SST2 Adv. [charbert_SST2_adv](https://drive.google.com/file/d/1tkO7_EH1Px7tXRxNDu6lzr_y8b4Q709f/view?usp=sharing)
-* finetuned CharBERT on BioMed NER Plain. [charbert_NER_plain](https://drive.google.com/file/d/1tkO7_EH1Px7tXRxNDu6lzr_y8b4Q709f/view?usp=sharing)
-* finetuned CharBERT on BioMed NER Adv. [charbert_NER_adv](https://drive.google.com/file/d/1tkO7_EH1Px7tXRxNDu6lzr_y8b4Q709f/view?usp=sharing)
+* finetuned CharBERT on SST2 Plain. [charbert_SST2_plain](https://drive.google.com/drive/folders/1PzOVnI-xa3QjcAJMEXaphW6vGCtzPK_7?usp=sharing)
+* finetuned CharBERT on SST2 Adv. [charbert_SST2_adv](https://drive.google.com/drive/folders/1jUGeQmJs1CtNdosqD3zxZnFlkWkXAwlz?usp=sharing)
+* finetuned CharBERT on BioMed NER Plain. [charbert_NER_plain](https://drive.google.com/drive/folders/1pftUQdph0iHDsX0ov1C6zaQyBK8Dkots?usp=sharing)
+* finetuned CharBERT on BioMed NER Adv. [charbert_NER_adv](https://drive.google.com/drive/folders/1JIUGWuIti4ve_tS81lboV4wssfM6xpG7?usp=sharing)
 
 ## Datasets
 ### SST2
-SST2 plain<br/>
-SST2 Adv.
+[SST2 plain](https://drive.google.com/drive/folders/1mkVKV_VB8baqifsxg1WlclbuvQzf_laH?usp=sharing)<br/>
+[SST2 Adv](https://drive.google.com/drive/folders/1Dc3O0Tw8UhVRImASrzycoSfkstKXRJDo?usp=sharing).
 
 ### BioMed NER
-BioMed plain<br/>
-BioMed Adv.
+[BioMed plain](https://drive.google.com/drive/folders/1CymDfyDOsaIE2xlMQsa_uIdKCsrJ8vam?usp=sharing)<br/>
+[BioMed Adv.](https://drive.google.com/drive/folders/1lyy5MrRCTdIq6sG-ZsPyAKFuDg0td2eN?usp=sharing)
 
 ## Directory Guide
 ```
