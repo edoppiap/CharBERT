@@ -25,7 +25,7 @@ Finetuned
 ## Datasets
 ### SST2
 [SST2 plain](https://drive.google.com/drive/folders/1mkVKV_VB8baqifsxg1WlclbuvQzf_laH?usp=sharing)<br/>
-[SST2 Adv](https://drive.google.com/drive/folders/1Dc3O0Tw8UhVRImASrzycoSfkstKXRJDo?usp=sharing).
+[SST2 Adv.](https://drive.google.com/drive/folders/1Dc3O0Tw8UhVRImASrzycoSfkstKXRJDo?usp=sharing)
 
 ### BioMed NER
 [BioMed plain](https://drive.google.com/drive/folders/1CymDfyDOsaIE2xlMQsa_uIdKCsrJ8vam?usp=sharing)<br/>
